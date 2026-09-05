@@ -1,0 +1,596 @@
+"use client";
+import React, { useState, useEffect } from "react";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { supabase } from "@/utils/supabaseClient";
+import { AddLocationModal } from "@/components/modals/admin/addLocation";
+import { Toaster, toast } from 'sonner';
+import { Plus, MapPin, Search, Filter, Globe, Sparkles, Map } from "lucide-react";
+import { LocationTable } from "@/components/tables/admin/locationsTable";
+import type { Location } from "@/interface";
+import { EditLocationModal } from "@/components/modals/admin/editLocation";
+import { motion, AnimatePresence } from "framer-motion";
+import { useSearchParams } from "next/dist/client/components/navigation";
+import { api } from "@/lib/apiClient";
+
+export default function LocationsPage() {
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [mapLink, setMapLink] = useState("");
+  const [pickLocation, setPickLocation] = useState<Location>();
+  const [filterProvince, setFilterProvince] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    note: "",
+    lat: "",
+    lng: "",
+    province_id: "",
+    difficulty_level: ""
+  });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [provinces, setProvinces] = useState<{ id: string; name: string }[]>([]);
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get("search") || "";
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+
+  const handleExtractFromLink = async () => {
+    if (!mapLink) {
+      toast.error("Vui lòng nhập link Google Maps!");
+      return;
+    }
+    let cleanLink = mapLink.trim();
+    if (cleanLink.includes("http://") && cleanLink.indexOf("http://") > 0) {
+      cleanLink = "http://" + cleanLink.split("http://")[1];
+    } else if (cleanLink.includes("https://") && cleanLink.indexOf("https://") > 0) {
+      cleanLink = "https://" + cleanLink.split("https://")[1];
+    }
+
+    const toastId = toast.loading("Đang trích xuất dữ liệu không gian...");
+
+    try {
+      const response = await fetch(`http://localhost:8000/extract-map?url=${encodeURIComponent(cleanLink)}`);
+      if (!response.ok) throw new Error("API lỗi");
+
+      const result = await response.json();
+      const finalUrl = result.expandedUrl || mapLink;
+      let lat = "";
+      let lng = "";
+
+      const exactPinRegex = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
+      const exactMatch = finalUrl.match(exactPinRegex);
+
+      if (exactMatch) {
+        lat = exactMatch[1];
+        lng = exactMatch[2];
+      } else {
+        const viewportRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+        const viewportMatch = finalUrl.match(viewportRegex);
+        if (viewportMatch) {
+          lat = viewportMatch[1];
+          lng = viewportMatch[2];
+        }
+      }
+
+      if (!lat || !lng) {
+        toast.error("Không tìm thấy tọa độ trong link này.", { id: toastId });
+        return;
+      }
+      let extractedName = result.name || "";
+      if (!extractedName && finalUrl.includes('/place/')) {
+        const nameMatch = finalUrl.match(/\/place\/([^/]+)/);
+        if (nameMatch) {
+          extractedName = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
+        }
+      }
+      let matchedProvinceId = "";
+      if (extractedName) {
+        const nameParts = extractedName.split(',');
+        const lastPart = nameParts[nameParts.length - 1].trim();
+        const normalizedLastPart = removeAccents(lastPart);
+
+        const foundInName = provinces.find((p) => {
+          const dbNameClean = p.name.replace(/Tỉnh |Thành phố |TP\. /gi, '').trim();
+          const normalizedDbName = removeAccents(dbNameClean);
+          return normalizedLastPart.includes(normalizedDbName) || normalizedDbName.includes(normalizedLastPart);
+        });
+
+        if (foundInName) {
+          matchedProvinceId = foundInName.id;
+        }
+      }
+      if (!matchedProvinceId) {
+        try {
+          const provRes = await fetch(`http://localhost:8000/get-province-from-coords?lat=${lat}&lng=${lng}`);
+          const provData = await provRes.json();
+
+          if (provData.provinceName) {
+            const rawName = provData.provinceName;
+            const normalizedRaw = removeAccents(rawName);
+
+            const foundInCoords = provinces.find((p) => {
+              const dbNameClean = p.name.replace(/Tỉnh |Thành phố |TP\. /gi, '').trim();
+              const normalizedDb = removeAccents(dbNameClean);
+              return normalizedRaw.includes(normalizedDb) || normalizedDb.includes(normalizedRaw);
+            });
+
+            if (foundInCoords) {
+              matchedProvinceId = foundInCoords.id;
+            }
+          }
+        } catch (e) {
+          console.error("Lỗi khi tra cứu tọa độ lấy tỉnh:", e);
+        }
+      }
+      setFormData((prev) => ({
+        ...prev,
+        lat,
+        lng,
+        ...(extractedName ? { name: extractedName } : {}),
+        ...(matchedProvinceId ? { province_id: matchedProvinceId } : {})
+      }));
+      if (result.base64) {
+        const file = base64ToFile(result.base64, result.fileName, result.mimeType);
+        setImageFile(file);
+        toast.success("Trích xuất dữ liệu hoàn tất!", { id: toastId });
+      } else {
+        toast.success("Đã lấy dữ liệu (Không có ảnh xem trước)!", { id: toastId });
+      }
+
+    } catch (error) {
+      console.error("Lỗi trích xuất API:", error);
+
+      let lat = "";
+      let lng = "";
+      const exactPinRegex = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
+      let match = mapLink.match(exactPinRegex);
+
+      if (match) {
+        lat = match[1];
+        lng = match[2];
+      } else {
+        const viewportRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+        match = mapLink.match(viewportRegex);
+        if (match) {
+          lat = match[1];
+          lng = match[2];
+        }
+      }
+
+      if (lat && lng) {
+        setFormData((prev) => ({ ...prev, lat, lng }));
+        toast.success("Đã lấy được tọa độ dự phòng!", { id: toastId });
+      } else {
+        toast.error("Không thể trích xuất dữ liệu từ link này.", { id: toastId });
+      }
+    }
+  };
+
+  const removeAccents = (str: string) => {
+    return str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D");
+  };
+
+  const executeDelete = async (id: string, name: string) => {
+    const toastId = toast.loading(`Đang vô hiệu hóa "${name}"...`);
+
+    try {
+      const { response, data } = await api.delete(`/locations/${id}`);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Lỗi khi xóa địa điểm");
+      }
+
+      toast.success(`Đã xóa "${name}" thành công!`, { id: toastId });
+      sessionStorage.removeItem("locations_cache");
+      fetchLocations();
+    } catch (error) {
+      console.error("Lỗi:", error);
+      toast.error("Xóa thất bại! Vui lòng thử lại.", { id: toastId });
+    }
+  };
+
+  const fetchProvinces = async () => {
+    const cachedData = sessionStorage.getItem("provinces_cache");
+    if (cachedData) {
+      setTimeout(() => {
+        setProvinces(JSON.parse(cachedData));
+      }, 0);
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:8000/provinces?limit=1000`);
+      const result = await response.json();
+      let finalData = [];
+      if (Array.isArray(result)) finalData = result;
+      else if (result.data && Array.isArray(result.data)) finalData = result.data;
+      else if (result.data?.data && Array.isArray(result.data.data)) finalData = result.data.data;
+      else if (result.success && result.data) finalData = [result.data];
+
+      setProvinces(finalData);
+      sessionStorage.setItem("provinces_cache", JSON.stringify(finalData));
+    } catch (error) {
+      console.error("Lỗi kết nối:", error);
+    }
+  };
+
+  const fetchLocations = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: "10",
+        ...(searchQuery && { search: searchQuery }),
+        ...(filterProvince && { province_id: filterProvince })
+      });
+
+      const response = await fetch(`http://localhost:8000/locations?${params}`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        setLocations(result.data);
+        setTotalPages(result.totalPages || 1);
+      } else if (Array.isArray(result)) {
+        setLocations(result);
+      }
+    } catch (error) {
+      console.error("Lỗi kết nối:", error);
+      toast.error("Không thể tải danh sách địa điểm!");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const initTimer = setTimeout(() => {
+      fetchProvinces();
+    }, 0);
+
+    const provinceChannel = supabase.channel("custom-province-channel")
+      .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => {
+        sessionStorage.removeItem("provinces_cache");
+        fetchProvinces();
+      }).subscribe();
+
+    return () => {
+      clearTimeout(initTimer);
+      supabase.removeChannel(provinceChannel);
+    };
+  }, []);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchLocations();
+    }, 500);
+    const locationChannel = supabase.channel("custom-location-channel")
+      .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, () => {
+        sessionStorage.removeItem("locations_cache");
+        fetchLocations();
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(locationChannel);
+      clearTimeout(delayDebounceFn)
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, filterProvince, searchQuery]);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFilterProvince(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const base64ToFile = (base64String: string, fileName: string, mimeType: string): File => {
+    const arr = base64String.split(',');
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], fileName, { type: mimeType });
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const toastId = toast.loading("Đang thiết lập tọa độ lên hệ thống...");
+
+    const submitData = new FormData();
+    submitData.append("name", formData.name);
+    if (formData.description) submitData.append("description", formData.description);
+    if (formData.note) submitData.append("note", formData.note);
+    if (formData.lat) submitData.append("lat", formData.lat);
+    if (formData.lng) submitData.append("lng", formData.lng);
+    if (formData.province_id) submitData.append("province_id", formData.province_id);
+    if (formData.difficulty_level) submitData.append("difficulty_level", formData.difficulty_level);
+    if (imageFile) submitData.append("image", imageFile);
+
+    try {
+      const { response, data } = await api.post("/locations", submitData);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Lỗi khi thêm địa điểm");
+      }
+
+      toast.success("Khởi tạo không gian thành công!", { id: toastId });
+
+      setIsAddModalOpen(false);
+      setFormData({ name: "", description: "", note: "", lat: "", lng: "", province_id: "", difficulty_level: "" });
+      setImageFile(null);
+      setMapLink("");
+
+      sessionStorage.removeItem("locations_cache");
+      fetchLocations();
+    } catch (error) {
+      console.error("Lỗi:", error);
+      toast.error("Lưu thất bại! Cổng kết nối có vấn đề.", { id: toastId });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pickLocation) {
+      toast.error("Không tìm thấy dữ liệu địa điểm cần sửa!");
+      return;
+    }
+    setIsSaving(true);
+    const toastId = toast.loading("Đang tái cấu trúc địa điểm...");
+
+    const submitData = new FormData();
+    submitData.append("name", formData.name);
+    if (formData.description) submitData.append("description", formData.description);
+    if (formData.note) submitData.append("note", formData.note);
+    if (formData.lat) submitData.append("lat", formData.lat);
+    if (formData.lng) submitData.append("lng", formData.lng);
+    if (formData.province_id) submitData.append("province_id", formData.province_id);
+    if (formData.difficulty_level) submitData.append("difficulty_level", formData.difficulty_level);
+    if (imageFile) {
+      submitData.append("image", imageFile);
+    }
+
+    try {
+      const { response, data } = await api.patch(`/locations/${pickLocation.id}`, submitData);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Lỗi khi sửa địa điểm");
+      }
+
+      toast.success("Cập nhật tọa độ thành công!", { id: toastId });
+
+      setIsEditModalOpen(false);
+      setPickLocation(undefined);
+      setFormData({ name: "", description: "", note: "", lat: "", lng: "", province_id: "", difficulty_level: "" });
+      setImageFile(null);
+      setMapLink("");
+
+      sessionStorage.removeItem("locations_cache");
+      fetchLocations();
+
+    } catch (error) {
+      console.error("Lỗi:", error);
+      toast.error("Cập nhật thất bại! Cổng kết nối có vấn đề.", { id: toastId });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // === RENDER GIAO DIỆN ===
+  return (
+    <div className="min-h-screen pb-12">
+      <PageBreadcrumb pageTitle="Quản lý Không gian & Địa điểm" />
+      <Toaster duration={1500} richColors position="bottom-right" />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative overflow-hidden rounded-3xl bg-gray-900 p-8 text-white shadow-2xl mb-8 dark:bg-gray-950 border border-gray-800"
+      >
+        <div className="absolute -right-20 -top-20 opacity-10 pointer-events-none">
+          <Globe className="h-96 w-96 animate-[spin_120s_linear_infinite]" />
+        </div>
+        <div className="absolute left-0 top-0 h-full w-full bg-gradient-to-r from-brand-600/20 to-transparent pointer-events-none"></div>
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-brand-300 backdrop-blur-md mb-4 border border-brand-500/30">
+              <Sparkles className="h-3.5 w-3.5" /> Quản trị bản đồ
+            </span>
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">
+              Trung tâm địa điểm
+            </h1>
+            <p className="max-w-xl text-sm text-gray-400 font-medium leading-relaxed">
+              Khám phá, thiết lập và lưu trữ các điểm đến tuyệt vời nhất. Quản lý hệ thống bản đồ du lịch của bạn tại một nơi duy nhất.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl bg-brand-600 px-6 py-3.5 font-bold text-white shadow-lg shadow-brand-500/30 transition-all hover:scale-105 hover:bg-brand-500 hover:shadow-brand-500/50 active:scale-95"
+          >
+            <div className="absolute inset-0 flex h-full w-full justify-center [transform:skew(-12deg)_translateX(-100%)] group-hover:duration-1000 group-hover:[transform:skew(-12deg)_translateX(100%)]">
+              <div className="relative h-full w-8 bg-white/20"></div>
+            </div>
+            <Plus className="mr-2 h-5 w-5" />
+            <span>Khởi tạo Tọa độ mới</span>
+          </button>
+        </div>
+      </motion.div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+      >
+        <div className="mb-6 flex flex-col lg:flex-row gap-4 items-center justify-between">
+          <div className="flex w-full lg:w-auto flex-col sm:flex-row items-center gap-3 bg-white/80 p-2 rounded-2xl shadow-sm border border-gray-200/60 backdrop-blur-xl dark:bg-gray-900/80 dark:border-gray-800">
+            <div className="relative w-full sm:w-72">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Tìm kiếm địa danh..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="block w-full rounded-xl border-none bg-gray-50/50 py-2.5 pl-10 pr-4 text-sm font-medium text-gray-900 transition-all focus:bg-white focus:ring-2 focus:ring-brand-500/50 dark:bg-gray-800/50 dark:text-white placeholder:text-gray-400"
+              />
+            </div>
+
+            <div className="hidden sm:block h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+            <div className="relative w-full sm:w-56">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Filter className="h-4 w-4 text-brand-500" />
+              </div>
+              <select
+                value={filterProvince}
+                onChange={handleFilterChange}
+                className="block w-full appearance-none rounded-xl border-none bg-brand-50/50 py-2.5 pl-10 pr-8 text-sm font-bold text-brand-700 transition-all focus:bg-brand-50 focus:ring-2 focus:ring-brand-500/50 dark:bg-brand-900/20 dark:text-brand-400 cursor-pointer"
+              >
+                <option value="">Tất cả Vùng miền</option>
+                {provinces?.map((prov) => (
+                  <option key={prov.id} value={prov.id}>
+                    {prov.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="text-sm font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 px-4 py-2.5 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-800 hidden lg:block">
+            Khu vực quản lý dữ liệu
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-3xl border border-gray-200/80 bg-white shadow-xl shadow-gray-200/40 dark:border-gray-800 dark:bg-gray-900 dark:shadow-none relative">
+
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left text-sm text-gray-600 dark:text-gray-400">
+              <thead className="bg-gray-50/80 backdrop-blur-md text-xs uppercase tracking-widest text-gray-500 dark:bg-gray-800/80 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+                <tr>
+                  <th className="px-6 py-5 font-bold">Hình ảnh</th>
+                  <th className="px-6 py-5 font-bold">Tên địa điểm</th>
+                  <th className="px-6 py-5 font-bold">Tỉnh thành</th>
+                  <th className="px-6 py-5 text-right font-bold">Hành động</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-900/20">
+                          <Map className="h-6 w-6 animate-pulse text-brand-500" />
+                          <div className="absolute inset-0 rounded-xl border-2 border-brand-500 opacity-20 animate-ping"></div>
+                        </div>
+                        <span className="text-sm font-bold uppercase tracking-wider text-gray-400">Đang đồng bộ dữ liệu...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : !Array.isArray(locations) || locations.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-16 text-center">
+                      <div className="mx-auto max-w-sm flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 border border-dashed border-gray-200 dark:bg-gray-800/30 dark:border-gray-700">
+                        <div className="mb-4 rounded-full bg-gray-100 p-4 dark:bg-gray-800">
+                          <MapPin className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="mb-1 text-base font-bold text-gray-900 dark:text-white">Không gian trống</h3>
+                        <p className="text-xs text-gray-500">Chưa có tọa độ nào được ghi nhận tại đây. Hãy khởi tạo một địa điểm mới.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <LocationTable
+                    locations={locations}
+                    executeDelete={executeDelete}
+                    setIsEditModalOpen={setIsEditModalOpen}
+                    setPickLocation={setPickLocation}
+                    setFormData={setFormData}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
+          {!isLoading && totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/50 px-6 py-4 dark:border-gray-800/50 dark:bg-gray-900">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                Trang <span className="text-brand-600 dark:text-brand-400">{currentPage}</span> / {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-700 shadow-sm transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Quay lại
+                </button>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-700 shadow-sm transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Tiếp tiến
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <AddLocationModal
+            setIsAddModalOpen={setIsAddModalOpen}
+            formData={formData}
+            setFormData={setFormData}
+            mapLink={mapLink}
+            setMapLink={setMapLink}
+            setImageFile={setImageFile}
+            handleInputChange={handleInputChange}
+            handleExtractFromLink={handleExtractFromLink}
+            handleAddSubmit={handleAddSubmit}
+            provinces={provinces}
+            isSaving={isSaving}
+            imageFile={imageFile}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <EditLocationModal
+            setIsEditModalOpen={setIsEditModalOpen}
+            formData={formData}
+            setFormData={setFormData}
+            mapLink={mapLink}
+            setMapLink={setMapLink}
+            setImageFile={setImageFile}
+            handleInputChange={handleInputChange}
+            handleExtractFromLink={handleExtractFromLink}
+            handleEditSubmit={handleEditSubmit}
+            provinces={provinces}
+            isSaving={isSaving}
+            imageFile={imageFile}
+            pickLocation={pickLocation}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

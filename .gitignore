@@ -1,0 +1,79 @@
+# ==============================================================================
+# DEPENDENCIES (Thư mục cài đặt thư viện)
+# ==============================================================================
+node_modules/
+/.pnpm-store
+.yarn/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+cypress/
+
+# ==============================================================================
+# NEXT.JS (Frontend build & cache)
+# ==============================================================================
+.next/
+out/
+build/
+.open-next/
+
+# ==============================================================================
+# KOAJS & SERVER (Backend build & logs)
+# ==============================================================================
+dist/
+lib/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ==============================================================================
+# ENV & SECRETS (Bảo mật - TUYỆT ĐỐI KHÔNG ĐẨY LÊN GIT)
+# ==============================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Các file chứa key của các nhà cung cấp cloud (nếu có)
+**.pem
+*.key
+*.secret
+
+# ==============================================================================
+# SUPABASE (Local development configuration)
+# ==============================================================================
+# Thư mục chứa dữ liệu Postgres cục bộ chạy bằng Docker
+.supabase/functions/.env
+.supabase/db
+.supabase/storage
+
+# KHÔNG ignore file 'supabase/config.toml' và các file migrations vì 
+# chúng cần thiết để đồng bộ cấu hình database giữa các thành viên.
+
+# ==============================================================================
+# SYSTEM FILES (Thư mục rác của hệ điều hành)
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==============================================================================
+# IDEs & EDITORS (Cấu hình riêng của trình soạn thảo)
+# ==============================================================================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
