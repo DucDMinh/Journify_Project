@@ -1,150 +1,67 @@
-import { BaseRepository } from "./repo.js";
-import { supabase } from "../config/supabaseClient.js";
+import { BaseRepository, unwrap } from './repo.js';
+import { supabase } from '../config/supabaseClient.js';
+
+const FULL_ITINERARY_SELECT = `
+    *,
+    itinerary_days (
+        id, day_number, title,
+        itinerary_locations (
+            id, location_id, location_name, lat, lng, sequence_order,
+            start_time, end_time, cost, activity_note,
+            locations ( id, name, img, difficulty_level )
+        )
+    ),
+    itinerary_provinces (
+        province_id,
+        provinces ( id, name, image_url )
+    )
+`;
+
+const LIST_ITINERARY_SELECT = `
+    *,
+    itinerary_provinces ( province_id, provinces ( id, name ) ),
+    user_id ( id, name )
+`;
 
 class ItineraryRepository extends BaseRepository {
     constructor() {
         super('itineraries');
     }
-    create = async (payload) => {
-        const { data, error } = await supabase.rpc('create_full_itinerary', {
-            payload: payload
-        });
 
-        if (error) {
-            console.error("Lỗi khi tạo Itinerary qua RPC:", error);
-            throw error;
-        }
-
-        return data;
-    }
-    update = async (id, payload) => {
-        const { data, error } = await supabase.rpc('update_full_itinerary', {
-            p_id: id,
-            payload: payload
-        });
-
-        if (error) {
-            console.error("Lỗi khi cập nhật Itinerary qua RPC:", error);
-            throw error;
-        }
-
-        return data;
+    async create(payload) {
+        return unwrap(await supabase.rpc('create_full_itinerary', { payload }));
     }
 
-    getById = async (id) => {
-        const { data, error } = await supabase
-            .from('itineraries')
-            .select(`
-    *, 
-    itinerary_days (
-        id, 
-        day_number, 
-        title,
-        itinerary_locations (
-            id, 
-            location_id,      
-            location_name,    
-            lat,              
-            lng,              
-            sequence_order, 
-            start_time, 
-            end_time, 
-            cost, 
-            activity_note,
-            locations (
-                id, 
-                name, 
-                img, 
-                difficulty_level
-            )
-        )
-    ), 
-    itinerary_provinces (
-        province_id,
-        provinces (
-            id,
-            name,
-            image_url
-        )
-    )
-`)
-            .eq('id', id)
-            .single();
+    async update(id, payload) {
+        return unwrap(await supabase.rpc('update_full_itinerary', { p_id: id, payload }));
+    }
 
-        if (error) {
-            console.error("Lỗi khi lấy Itinerary:", error);
-            throw error;
-        }
+    async getById(id) {
+        return unwrap(await this.table().select(FULL_ITINERARY_SELECT).eq('id', id).maybeSingle());
+    }
 
-        return { data };
+    async getOwnerId(id) {
+        const row = unwrap(await this.table().select('user_id').eq('id', id).maybeSingle());
+        return row?.user_id ?? null;
     }
-    getAll = async (is_public) => {
-        let query = supabase
-            .from('itineraries')
-            .select(`
-                *,
-                itinerary_provinces (
-                    province_id,
-                    provinces (
-                        id,
-                        name
-                    )
-                ),
-                user_id (
-                    id,
-                    name
-                )
-            `)
-            .order('created_at', { ascending: false });
-        if (is_public === 'true') {
-            query = query.eq('share', true);
-        }
-        const { data, error } = await query;
-        return { data, error };
+
+    async getAll({ publicOnly = false } = {}) {
+        let query = this.table().select(LIST_ITINERARY_SELECT).order('created_at', { ascending: false });
+        if (publicOnly) query = query.eq('share', true);
+        return unwrap(await query);
     }
-    getTrending = async () => {
-        const { data, error } = await supabase.rpc('get_trending_itineraries_weekly');
-        return { data, error };
+
+    async getTrending() {
+        return unwrap(await supabase.rpc('get_trending_itineraries_weekly'));
     }
-    getItinerariesByUserId = async (userId) => {
-        const { data, error } = await supabase
-            .from('itineraries')
-            .select(`
-    *, 
-    itinerary_days (
-        id, 
-        day_number, 
-        title,
-        itinerary_locations (
-            id, 
-            location_id,      
-            location_name,    
-            lat,              
-            lng,              
-            sequence_order, 
-            start_time, 
-            end_time, 
-            cost, 
-            activity_note,
-            locations (
-                id, 
-                name, 
-                img, 
-                difficulty_level
-            )
-        )
-    ), 
-    itinerary_provinces (
-        province_id,
-        provinces (
-            id,
-            name,
-            image_url
-        )
-    )
-`)
-            .eq('user_id', userId);
-        return { data, error };
+
+    async getByUserId(userId) {
+        return unwrap(
+            await this.table()
+                .select(FULL_ITINERARY_SELECT)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false }),
+        );
     }
 }
 

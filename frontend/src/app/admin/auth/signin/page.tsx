@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { User } from "@/interface";
+import { Suspense, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mail,
@@ -18,7 +19,15 @@ import { useAuth } from "@/hooks/auth/AuthContext";
 import { api } from "@/lib/apiClient";
 import { useSearchParams } from "next/navigation";
 
-export default function AdminSignInScreen() {
+export default function AdminSignInPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <AdminSignInScreen />
+    </Suspense>
+  );
+}
+
+function AdminSignInScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,10 +57,11 @@ export default function AdminSignInScreen() {
     const toastId = toast.loading("Đang xác thực...");
 
     try {
-      const { response, data } = await api.post("/auth/login", { email, password });
-      if (response.ok && (data.success || data.token)) {
+      const { response, data } = await api.post<undefined>("/auth/login", { email, password });
+      const sessionUser = data.user as User | undefined;
+      if (response.ok && data.success && sessionUser) {
 
-        const userRole = data.user?.role?.toUpperCase();
+        const userRole = sessionUser.role?.toUpperCase();
         if (userRole !== "ADMIN") {
           toast.error("Tài khoản không có quyền Quản trị viên!", { id: toastId });
           setError("Bạn không có quyền truy cập vào khu vực này.");
@@ -60,7 +70,7 @@ export default function AdminSignInScreen() {
 
         toast.success("Đăng nhập thành công! Đang chuyển hướng...", { id: toastId });
 
-        login(data.token, data.user);
+        login(data.token as string, sessionUser);
         window.location.href = "/";
       } else {
         const message = data.message || "Email hoặc mật khẩu không đúng.";

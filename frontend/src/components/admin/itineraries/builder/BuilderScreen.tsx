@@ -1,20 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { X } from "lucide-react";
-import { useState } from "react";
-import { BuilderScreenProp } from "@/interface";
-import React from "react";
+import React, { useState } from "react";
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { toast } from 'sonner';
 import dynamic from "next/dynamic";
-import { Compass } from "lucide-react";
-import { useItineraryBuilder } from "@/hooks/admin/Itineraries/useItineraryBuilder";
+import { X, Compass, Map as MapIcon, AlertTriangle } from "lucide-react";
+import { BuilderScreenProp, Province } from "@/interface";
+import { useItineraryBuilder } from "@/hooks/admin/itineraries/useItineraryBuilder";
+import { useItinerarySetup } from "@/hooks/admin/itineraries/useItinerarySetup";
+import { api } from "@/lib/apiClient";
+import type { GeocodeResult } from "@/utils/map";
 import { BuilderHeader } from "./BuilderHeader";
 import { GeneralInfoForm } from "./GeneralInfoForm";
 import { DayCard } from "./DayCard";
 import { LocationSidebar } from "./LocationSidebar";
 import { DraggableLocationCard } from "./DraggableLocationCard";
-import { Map as MapIcon, AlertTriangle } from "lucide-react";
-import { useItinerarySetup } from "@/hooks/admin/Itineraries/useItinerarySetup";
 
 const RouteMapViewer = dynamic(() => import("@/components/admin/itineraries/builder/RouteMapViewer"), {
     ssr: false,
@@ -61,10 +59,7 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
         filteredProvinces,
         fetchProvinces,
         fetchAllSelectedLocations,
-    } = useItinerarySetup({
-        ...props,
-        step: "BUILDER"
-    } as any);
+    } = useItinerarySetup({ ...props, step: "BUILDER" });
 
     const [currentActiveDayId, setCurrentActiveDayId] = useState<string | null>(null);
     const [currentActiveLocId, setCurrentActiveLocId] = useState<string | null>(null);
@@ -74,7 +69,7 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
         setIsDropdownOpen(true);
         await fetchProvinces();
     };
-    const handleAddNewProvince = async (province: any) => {
+    const handleAddNewProvince = async (province: Province) => {
         const toastId = toast.loading(`Đang tải địa điểm của ${province.name}...`);
         try {
             const newSelectedProvinces = [...selectedProvinces, province];
@@ -234,20 +229,20 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
                                         const toastId = toast.loading("Đang phân tích địa chỉ...");
 
                                         try {
-                                            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`);
-                                            const data = await response.json();
-                                            const locationName = data.name || data.display_name || "Địa điểm tùy chỉnh";
+                                            const { response, data } = await api.get<GeocodeResult | null>(`/map/reverse?lat=${lat}&lng=${lng}`);
+                                            if (!response.ok) throw new Error(data.message);
+                                            const locationName = data.data?.name || data.data?.display_name || "Địa điểm tùy chỉnh";
                                             if (currentActiveDayId && currentActiveLocId) {
-                                                handleUpdateActivity(currentActiveDayId, currentActiveLocId, 'location_name', locationName);
-                                                handleUpdateActivity(currentActiveDayId, currentActiveLocId, 'lat', lat);
-                                                handleUpdateActivity(currentActiveDayId, currentActiveLocId, 'lng', lng);
-
+                                                handleUpdateActivity(currentActiveDayId, currentActiveLocId, {
+                                                    location_name: locationName,
+                                                    lat: Number(lat),
+                                                    lng: Number(lng),
+                                                });
                                                 toast.success(`Đã chọn: ${locationName}`, { id: toastId });
                                             } else {
                                                 toast.dismiss(toastId);
                                             }
-                                        } catch (error) {
-                                            console.error("Lỗi lấy địa chỉ:", error);
+                                        } catch {
                                             toast.error("Không lấy được tên, vui lòng tự nhập tay!", { id: toastId });
                                             if (currentActiveDayId && currentActiveLocId) {
                                                 handleUpdateActivity(currentActiveDayId, currentActiveLocId, 'location_name', `${lat}, ${lng}`);

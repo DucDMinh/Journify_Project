@@ -1,67 +1,55 @@
-
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
-export const verifyToken = async (ctx, next) => {
-    let token;
-    const authHeader = ctx.request.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.split(' ')[1];
-    }
-    else if (ctx.cookies.get('accessToken')) {
-        token = ctx.cookies.get('accessToken');
-    }
-    if (!token) {
-        ctx.status = 401;
-        ctx.body = { success: false, message: "Không tìm thấy Token, vui lòng đăng nhập!" };
-        return;
-    }
+const extractToken = (ctx) => {
+    const authHeader = ctx.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
+    return ctx.cookies.get('accessToken') || null;
+};
+
+const decodeToken = (token) => {
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        ctx.state.user = decoded;
-        await next();
+        return { user: jwt.verify(token, env.jwtSecret) };
     } catch (error) {
-        console.log("CHI TIẾT LỖI JWT:", error.name, error.message);
-        ctx.status = 401;
-        if (error.name === 'TokenExpiredError') {
-            ctx.body = {
-                success: false,
-                code: 'TOKEN_EXPIRED',
-                message: 'Token đã hết hạn, vui lòng làm mới token!',
-                expiredAt: error.expiredAt
-            };
-            return;
-        }
-        ctx.body = {
-            success: false,
-            code: 'INVALID_TOKEN',
-            message: 'Token không hợp lệ!'
-        };
+        return { error };
     }
 };
 
-export const requireAdmin = async (ctx, next) => {
-    const user = ctx.state.user;
-    if (!user || user.role !== 'ADMIN') {
-        ctx.status = 403;
-        ctx.body = {
-            success: false,
-            message: "Từ chối truy cập: Bạn không có quyền Quản trị viên!"
-        };
-        return;
+export const verifyToken = async (ctx, next) => {
+    const token = extractToken(ctx);
+    ctx.assert(token, 401, 'Không tìm thấy Token, vui lòng đăng nhập!');
+
+    const { user, error } = decodeToken(token);
+    if (error?.name === 'TokenExpiredError') {
+        ctx.throw(401, 'Token đã hết hạn, vui lòng đăng nhập lại!', { code: 'TOKEN_EXPIRED' });
     }
+    if (error) {
+        ctx.throw(401, 'Token không hợp lệ!', { code: 'INVALID_TOKEN' });
+    }
+    ctx.state.user = user;
+    await next();
+};
+
+export const optionalAuth = async (ctx, next) => {
+    const token = extractToken(ctx);
+    if (token) {
+        const { user } = decodeToken(token);
+        if (user) ctx.state.user = user;
+    }
+    await next();
+};
+
+export const requireAdmin = async (ctx, next) => {
+    ctx.assert(ctx.state.user?.role === 'ADMIN', 403, 'Từ chối truy cập: Bạn không có quyền Quản trị viên!');
     await next();
 };
 
 export const requirePremium = async (ctx, next) => {
-    const user = ctx.state.user;
-    if (!user || !user.is_premium) {
-        ctx.status = 403;
-        ctx.body = {
-            success: false,
-            message: "Từ chối truy cập: Tính năng dành riêng cho hội viên Premium!",
-            user: user
-        };
-        return;
-    }
+    ctx.assert(ctx.state.user?.is_premium, 403, 'Tính năng dành riêng cho hội viên Premium!');
     await next();
-}
+};
+
+export const isAdmin = (user) => user?.role === 'ADMIN';
+
+export const isOwnerOrAdmin = (user, ownerId) =>
+    Boolean(user) && (isAdmin(user) || String(user.id) === String(ownerId));

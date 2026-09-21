@@ -1,4 +1,4 @@
-import { useItinerarySetup } from "@/hooks/admin/Itineraries/useItinerarySetup";
+import { useItinerarySetup } from "@/hooks/admin/itineraries/useItinerarySetup";
 import { SetupScreenProp } from "@/interface";
 import { motion } from "framer-motion";
 import { Sparkles, Search, Compass, ChevronRight, MapPin, X } from "lucide-react";

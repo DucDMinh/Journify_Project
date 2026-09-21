@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
-import { Itinerary, Itinerary_days, Itinerary_locations, User } from "@/interface";
+import { Itinerary, Itinerary_days, Itinerary_locations, User, asUserRef } from "@/interface";
 import { BookmarkPlus, CheckCircle2, Circle, Compass, Luggage, MapPin, Share2, X, Navigation, Map } from "lucide-react";
 import { useState } from "react";
 import { motion, Variants } from "framer-motion";
@@ -92,7 +92,7 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                             <div className="flex justify-between items-center gap-4">
                                 <span className="text-[var(--text-muted)] shrink-0">Tác giả lộ trình:</span>
                                 <span className="font-semibold text-right truncate">
-                                    {itinerary.user_id?.name || currentUser?.name || "Ẩn danh"}
+                                    {asUserRef(itinerary.user_id)?.name || currentUser?.name || "Ẩn danh"}
                                 </span>
                             </div>
                         </div>

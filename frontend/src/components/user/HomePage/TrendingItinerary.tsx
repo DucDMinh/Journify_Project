@@ -43,7 +43,7 @@ export const TrendingItinerary = ({ trendingItineraries, handleCloneTrip, handle
                     <p className="text-sm text-[var(--text-muted)] mt-1">Được cộng đồng yêu thích nhất tuần này</p>
                 </div>
                 <button
-                    onClick={() => router.push('/Itineraries')}
+                    onClick={() => router.push('/itineraries')}
                     className="text-sm font-bold text-[var(--accent-primary)] hover:underline flex items-center gap-1"
                 >
                     Xem tất cả <ChevronRight className="w-4 h-4" />

@@ -1,11 +1,11 @@
-import * as authController from "../controllers/authController.js"
-import Router from "@koa/router";
-import { verifyToken } from "../middleware/auth.middleware.js"
+import Router from '@koa/router';
+import * as authController from '../controllers/authController.js';
+import { verifyToken } from '../middleware/auth.middleware.js';
 
-const authRoutes = new Router({ prefix: '/auth' });
+const router = new Router({ prefix: '/auth' });
 
-authRoutes.post('/register', authController.createUser);
-authRoutes.post('/login', authController.login);
-authRoutes.get('/refresh-token', verifyToken, authController.refreshToken)
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.get('/refresh-token', verifyToken, authController.refreshToken);
 
-export default authRoutes;
+export default router;

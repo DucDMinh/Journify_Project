@@ -195,7 +195,7 @@ export const TripDetailModal1 = ({
                         <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-muted)] font-bold text-sm hover:text-[var(--text-main)] transition-colors shadow-sm">
                             Hủy
                         </button>
-                        <button onClick={() => router.push(`/MyItinerary/${itinerary.id}/builder`)} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-[0_4px_12px_rgba(var(--accent-primary-rgb),0.3)] hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                        <button onClick={() => router.push(`/my-itinerary/${itinerary.id}/builder`)} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-[0_4px_12px_rgba(var(--accent-primary-rgb),0.3)] hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
                             <Save className="w-4 h-4" /> Cập nhật
                         </button>
                     </div>

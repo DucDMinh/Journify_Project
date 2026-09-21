@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Upload, Image as ImageIcon } from "lucide-react";
+import { X, Upload } from "lucide-react";
 
 interface AddProvinceModalProps {
     isOpen: boolean;

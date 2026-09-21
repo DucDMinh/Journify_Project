@@ -1,21 +1,19 @@
-import Router from "@koa/router";
-import * as userController from "../controllers/userController.js";
+import Router from '@koa/router';
 import multer from '@koa/multer';
-import { verifyToken, requireAdmin } from "../middleware/auth.middleware.js";
+import * as userController from '../controllers/userController.js';
+import { verifyToken, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = new Router({ prefix: '/users' });
 const upload = multer();
-
-router.post('/', upload.single('avatar'), userController.createUser);
-router.get('/', verifyToken, requireAdmin, userController.getAllUser);
-router.get('/:id', verifyToken, userController.getUserById);
-router.delete('/:id', verifyToken, requireAdmin, userController.deleteUser);
-
-const cpUpload = upload.fields([
+const profileImages = upload.fields([
     { name: 'avatar', maxCount: 1 },
-    { name: 'background_image', maxCount: 1 }
+    { name: 'background_image', maxCount: 1 },
 ]);
 
-router.patch('/:id', verifyToken, cpUpload, userController.updateUser);
+router.get('/', verifyToken, requireAdmin, userController.getAllUser);
+router.post('/', verifyToken, requireAdmin, upload.single('avatar'), userController.createUser);
+router.get('/:id', verifyToken, userController.getUserById);
+router.patch('/:id', verifyToken, profileImages, userController.updateUser);
+router.delete('/:id', verifyToken, requireAdmin, userController.deleteUser);
 
 export default router;

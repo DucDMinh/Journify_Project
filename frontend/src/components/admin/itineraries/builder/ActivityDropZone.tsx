@@ -2,6 +2,10 @@ import { useDroppable } from "@dnd-kit/core";
 import { CheckCircle2, Map, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from 'sonner';
+import type { Itinerary_locations } from "@/interface";
+import type { UpdateActivityFn } from "@/hooks/admin/itineraries/useItineraryBuilder";
+import { api } from "@/lib/apiClient";
+import type { GeocodeResult } from "@/utils/map";
 
 export const DroppableActivityZone = ({
     dayId,
@@ -10,8 +14,8 @@ export const DroppableActivityZone = ({
     onOpenMap
 }: {
     dayId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loc: any, onUpdate: any,
+    loc: Itinerary_locations,
+    onUpdate: UpdateActivityFn,
     onOpenMap: (dayId: string, locId: string) => void
 }) => {
     const { isOver, setNodeRef } = useDroppable({
@@ -62,36 +66,20 @@ export const DroppableActivityZone = ({
                     try {
                         setIsSearchingLoc(true);
 
-                        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-                            typedName
-                        )}&format=json&limit=1&countrycodes=vn&accept-language=vi`;
+                        const { response, data } = await api.get<GeocodeResult | null>(
+                            `/map/geocode?q=${encodeURIComponent(typedName)}`,
+                            { signal: controller.signal },
+                        );
+                        if (!response.ok) throw new Error(data.message || 'Geocode failed');
 
-                        const res = await fetch(url, {
-                            headers: {
-                                'User-Agent': 'MyTravelApp/1.0 (daod1278@example.com)',
-                            },
-                            signal: controller.signal,
-                        });
-
-                        if (!res.ok) throw new Error('Network response was not ok');
-                        const data = await res.json();
-
-                        if (Array.isArray(data) && data.length > 0) {
-                            const { lat, lon, display_name } = data[0];
-                            onUpdate(dayId, loc.id, {
-                                lat: parseFloat(lat),
-                                lng: parseFloat(lon),
-                                location_name: typedName,
-                                display_name,
-                            });
-
-                            toast.success(
-                                `Đã ghim: ${display_name.split(',').slice(0, 3).join(',')}`
-                            );
+                        if (data.data) {
+                            const { lat, lng, display_name } = data.data;
+                            onUpdate(dayId, loc.id, { lat, lng, location_name: typedName });
+                            toast.success(`Đã ghim: ${display_name.split(',').slice(0, 3).join(',')}`);
                         } else {
                             onUpdate(dayId, loc.id, {
-                                lat: null,
-                                lng: null,
+                                lat: 0,
+                                lng: 0,
                                 location_name: typedName,
                             });
 
@@ -100,10 +88,8 @@ export const DroppableActivityZone = ({
                                 { duration: 4000, icon: '⚠️' }
                             );
                         }
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } catch (err: any) {
-                        if (err.name === 'AbortError') return;
-                        console.error('Lỗi tìm tọa độ:', err);
+                    } catch (err) {
+                        if (err instanceof Error && err.name === 'AbortError') return;
                         toast.error('Lỗi kết nối tới hệ thống bản đồ.');
                     } finally {
                         setIsSearchingLoc(false);

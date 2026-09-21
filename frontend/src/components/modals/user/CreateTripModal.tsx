@@ -6,7 +6,6 @@ import { Province } from "@/interface";
 import { toast } from 'sonner';
 import { api } from "@/lib/apiClient";
 import { useDashboard } from "@/app/user/(dashboard)/layout";
-import { useAuth } from "@/hooks/auth/AuthContext";
 import { useRouter } from "next/navigation";
 
 interface CreateTripModalProps {
@@ -17,7 +16,6 @@ export const CreateTripModal = ({ onClose }: CreateTripModalProps) => {
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedProvinces, setSelectedProvinces] = useState<Province[]>([]);
-    const { user: currentUser } = useAuth();
     const { setIsCreatingTrip } = useDashboard();
     const router = useRouter();
 
@@ -29,9 +27,9 @@ export const CreateTripModal = ({ onClose }: CreateTripModalProps) => {
 
     const fetchProvinces = async () => {
         try {
-            const { data, response } = await api.get('/provinces');
+            const { data, response } = await api.get<Province[]>('/provinces');
             if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu tỉnh thành!");
-            setProvinces(data.data);
+            setProvinces(data.data ?? []);
         } catch (error) {
             toast.error(`Lỗi: ${error}`);
         }
@@ -63,29 +61,23 @@ export const CreateTripModal = ({ onClose }: CreateTripModalProps) => {
         const toastId = toast.loading("Đang khởi tạo không gian làm việc...");
 
         try {
-            const submitData = new FormData();
-            if (formData.title) submitData.append('title', formData.title);
-            if (formData.start_date) submitData.append('start_date', formData.start_date);
-            if (formData.end_date) submitData.append('end_date', formData.end_date);
-            if (currentUser?.id) submitData.append('user_id', currentUser.id);
-            const provincePayload = selectedProvinces.map(p => ({
-                province_id: p.id,
-                provinces: p
-            }));
-            submitData.append('itinerary_provinces', JSON.stringify(provincePayload));
-            if (selectedProvinces[0]?.image_url) {
-                submitData.append('image_url', selectedProvinces[0].image_url);
-            }
+            const payload = {
+                title: formData.title,
+                start_date: formData.start_date || undefined,
+                end_date: formData.end_date || undefined,
+                itinerary_provinces: selectedProvinces.map((p) => ({ province_id: p.id })),
+                image_url: selectedProvinces[0]?.image_url || undefined,
+            };
 
-            const { data, response } = await api.post('/itineraries', submitData);
+            const { data, response } = await api.post<{ itinerary_id?: string; id?: string }>('/itineraries', payload);
 
             if (!response.ok) throw new Error(data.message || "Lỗi khi tạo lộ trình");
 
             toast.success("Khởi tạo thành công!", { id: toastId });
             setIsCreatingTrip(false);
-            const newTripId = data.itinerary_id || data.data?.itinerary_id;
+            const newTripId = data.data?.itinerary_id || data.data?.id;
             if (newTripId) {
-                router.push(`/MyItinerary/${newTripId}/builder`);
+                router.push(`/my-itinerary/${newTripId}/builder`);
             }
 
         } catch (error) {

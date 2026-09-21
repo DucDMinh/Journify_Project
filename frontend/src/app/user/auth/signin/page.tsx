@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, ArrowRight, Compass } from "lucide-react";
 import { toast } from 'sonner';
 import { useAuth } from "@/hooks/auth/AuthContext";
+import { api } from "@/lib/apiClient";
+import type { User as AppUser } from "@/interface";
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -40,19 +42,12 @@ export default function AuthScreen() {
     const toastId = toast.loading("Đang xử lý...");
 
     try {
-      const endpoint = isLogin ? "http://localhost:8000/auth/login" : "http://localhost:8000/auth/register";
+      const endpoint = isLogin ? "/auth/login" : "/auth/register";
       const bodyData = isLogin ? { email, password } : { name, email, password };
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData)
-      });
-
-      const result = await response.json();
+      const { response, data: result } = await api.post<undefined>(endpoint, bodyData);
 
       if (response.ok && result.success) {
-        login(result.token, result.user);
+        login(result.token as string, result.user as AppUser);
         toast.success(isLogin ? "Đăng nhập thành công!" : "Đăng ký thành công!", { id: toastId });
         setTimeout(() => {
           router.push('/');
@@ -60,8 +55,7 @@ export default function AuthScreen() {
       } else {
         toast.error(result.message || "Có lỗi xảy ra, vui lòng thử lại.", { id: toastId });
       }
-    } catch (error) {
-      console.error("Auth error:", error);
+    } catch {
       toast.error("Không thể kết nối đến máy chủ.", { id: toastId });
     } finally {
       setIsLoading(false);

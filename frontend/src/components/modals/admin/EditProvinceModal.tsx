@@ -50,7 +50,7 @@ export const EditProvinceModal: React.FC<EditProvinceModalProps> = ({
         if (localFormData.best_time_to_visit) submitData.append("best_time_to_visit", localFormData.best_time_to_visit);
         if (localFormData.height) submitData.append("height", localFormData.height);
         if (imageFile) {
-            submitData.append("image_url", imageFile);
+            submitData.append("image", imageFile);
         }
 
         await onEdit(submitData);

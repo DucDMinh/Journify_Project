@@ -1,13 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { toast } from 'sonner';
+import { toast } from "sonner";
 import { Compass } from "lucide-react";
 import { api } from "@/lib/apiClient";
 import { BuilderScreen } from "@/components/admin/itineraries/builder/BuilderScreen";
-import { Itinerary, Province, Location } from "@/interface";
+import { BuilderStep, Itinerary, Province, Location } from "@/interface";
 
 export default function ItineraryBuilderPage() {
     const params = useParams();
@@ -17,51 +16,41 @@ export default function ItineraryBuilderPage() {
     const [currentItinerary, setCurrentItinerary] = useState<Partial<Itinerary> | undefined>(undefined);
     const [selectedProvinces, setSelectedProvinces] = useState<Province[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
-    const [step, setStep] = useState<"BUILDER" | "SETUP">("BUILDER");
 
     useEffect(() => {
+        if (!tripId) return;
         const fetchInitialWorkspace = async () => {
-            if (!tripId) return;
             try {
-                const { data, response } = await api.get(`/itineraries/${tripId}`);
-                if (!response.ok) throw new Error("Không thể tải dữ liệu lộ trình");
+                const { data, response } = await api.get<Itinerary>(`/itineraries/${tripId}`);
+                if (!response.ok || !data.data) throw new Error(data.message || "Không thể tải dữ liệu lộ trình");
 
-                const fetchedItinerary = data.data.data || data;
-                setCurrentItinerary(fetchedItinerary);
-                const provinces = fetchedItinerary.itinerary_provinces
-                    ?.map((ip: any) => ip.provinces)
-                    .filter(Boolean) || [];
+                const itinerary = data.data;
+                setCurrentItinerary(itinerary);
+                const provinces = (itinerary.itinerary_provinces ?? [])
+                    .map((ip) => ip.provinces)
+                    .filter((p): p is Province => Boolean(p));
                 setSelectedProvinces(provinces);
+
                 if (provinces.length > 0) {
                     const results = await Promise.all(
-                        provinces.map((province: Province) =>
-                            api.get(`/provinces/${province.id}`)
-                        )
+                        provinces.map((province) => api.get<Province & { locations?: Location[] }>(`/provinces/${province.id}`)),
                     );
-                    const locations = results
-                        .filter((res) => res.response?.ok)
-                        .flatMap((res) => res.data?.data?.locations || res.data?.locations || []);
-                    setLocations(locations);
+                    setLocations(results.flatMap((res) => (res.response.ok ? res.data.data?.locations ?? [] : [])));
                 }
             } catch (error) {
-                console.error("Lỗi khởi tạo Workspace:", error);
-                toast.error("Lỗi khi tải dữ liệu không gian làm việc");
+                toast.error(error instanceof Error ? error.message : "Lỗi khi tải dữ liệu không gian làm việc");
             } finally {
                 setIsLoading(false);
             }
         };
-
         fetchInitialWorkspace();
     }, [tripId]);
-    const handleSetStep: React.Dispatch<React.SetStateAction<"BUILDER" | "SETUP">> = (newStep) => {
-        const stepValue = typeof newStep === 'function' ? newStep(step) : newStep;
 
-        if (stepValue === "SETUP") {
-            router.push('/MyItinerary');
-        } else {
-            setStep(stepValue);
-        }
+    const handleSetStep: React.Dispatch<React.SetStateAction<BuilderStep>> = (nextStep) => {
+        const stepValue = typeof nextStep === "function" ? nextStep("BUILDER") : nextStep;
+        if (stepValue === "SETUP") router.push("/my-itinerary");
     };
+
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -72,6 +61,7 @@ export default function ItineraryBuilderPage() {
             </div>
         );
     }
+
     return (
         <BuilderScreen
             setStep={handleSetStep}

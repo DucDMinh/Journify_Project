@@ -1,405 +1,40 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { supabase } from "@/utils/supabaseClient";
-import { AddLocationModal } from "@/components/modals/admin/addLocation";
-import { Toaster, toast } from 'sonner';
-import { Plus, MapPin, Search, Filter, Globe, Sparkles, Map } from "lucide-react";
-import { LocationTable } from "@/components/tables/admin/locationsTable";
-import type { Location } from "@/interface";
-import { EditLocationModal } from "@/components/modals/admin/editLocation";
+import React, { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSearchParams } from "next/dist/client/components/navigation";
-import { api } from "@/lib/apiClient";
+import { Plus, MapPin, Search, Filter, Globe, Sparkles, Map } from "lucide-react";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { AddLocationModal } from "@/components/modals/admin/addLocation";
+import { EditLocationModal } from "@/components/modals/admin/editLocation";
+import { LocationTable } from "@/components/tables/admin/locationsTable";
+import { useLocationsAdmin } from "@/hooks/admin/useLocationsAdmin";
 
 export default function LocationsPage() {
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [mapLink, setMapLink] = useState("");
-  const [pickLocation, setPickLocation] = useState<Location>();
-  const [filterProvince, setFilterProvince] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    note: "",
-    lat: "",
-    lng: "",
-    province_id: "",
-    difficulty_level: ""
-  });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [provinces, setProvinces] = useState<{ id: string; name: string }[]>([]);
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <LocationsContent />
+    </Suspense>
+  );
+}
+
+function LocationsContent() {
   const searchParams = useSearchParams();
-  const initialSearch = searchParams.get("search") || "";
-  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const {
+    locations, provinces, isLoading, isSaving,
+    mapLink, setMapLink,
+    pickLocation, setPickLocation,
+    filterProvince, searchQuery, currentPage, goToPage, totalPages,
+    isAddModalOpen, setIsAddModalOpen,
+    isEditModalOpen, setIsEditModalOpen,
+    formData, setFormData,
+    imageFile, setImageFile,
+    handleInputChange, handleFilterChange, handleSearchChange,
+    handleExtractFromLink, handleAddSubmit, handleEditSubmit, executeDelete,
+  } = useLocationsAdmin(searchParams.get("search") ?? "");
 
-  const handleExtractFromLink = async () => {
-    if (!mapLink) {
-      toast.error("Vui lòng nhập link Google Maps!");
-      return;
-    }
-    let cleanLink = mapLink.trim();
-    if (cleanLink.includes("http://") && cleanLink.indexOf("http://") > 0) {
-      cleanLink = "http://" + cleanLink.split("http://")[1];
-    } else if (cleanLink.includes("https://") && cleanLink.indexOf("https://") > 0) {
-      cleanLink = "https://" + cleanLink.split("https://")[1];
-    }
-
-    const toastId = toast.loading("Đang trích xuất dữ liệu không gian...");
-
-    try {
-      const response = await fetch(`http://localhost:8000/extract-map?url=${encodeURIComponent(cleanLink)}`);
-      if (!response.ok) throw new Error("API lỗi");
-
-      const result = await response.json();
-      const finalUrl = result.expandedUrl || mapLink;
-      let lat = "";
-      let lng = "";
-
-      const exactPinRegex = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
-      const exactMatch = finalUrl.match(exactPinRegex);
-
-      if (exactMatch) {
-        lat = exactMatch[1];
-        lng = exactMatch[2];
-      } else {
-        const viewportRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-        const viewportMatch = finalUrl.match(viewportRegex);
-        if (viewportMatch) {
-          lat = viewportMatch[1];
-          lng = viewportMatch[2];
-        }
-      }
-
-      if (!lat || !lng) {
-        toast.error("Không tìm thấy tọa độ trong link này.", { id: toastId });
-        return;
-      }
-      let extractedName = result.name || "";
-      if (!extractedName && finalUrl.includes('/place/')) {
-        const nameMatch = finalUrl.match(/\/place\/([^/]+)/);
-        if (nameMatch) {
-          extractedName = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        }
-      }
-      let matchedProvinceId = "";
-      if (extractedName) {
-        const nameParts = extractedName.split(',');
-        const lastPart = nameParts[nameParts.length - 1].trim();
-        const normalizedLastPart = removeAccents(lastPart);
-
-        const foundInName = provinces.find((p) => {
-          const dbNameClean = p.name.replace(/Tỉnh |Thành phố |TP\. /gi, '').trim();
-          const normalizedDbName = removeAccents(dbNameClean);
-          return normalizedLastPart.includes(normalizedDbName) || normalizedDbName.includes(normalizedLastPart);
-        });
-
-        if (foundInName) {
-          matchedProvinceId = foundInName.id;
-        }
-      }
-      if (!matchedProvinceId) {
-        try {
-          const provRes = await fetch(`http://localhost:8000/get-province-from-coords?lat=${lat}&lng=${lng}`);
-          const provData = await provRes.json();
-
-          if (provData.provinceName) {
-            const rawName = provData.provinceName;
-            const normalizedRaw = removeAccents(rawName);
-
-            const foundInCoords = provinces.find((p) => {
-              const dbNameClean = p.name.replace(/Tỉnh |Thành phố |TP\. /gi, '').trim();
-              const normalizedDb = removeAccents(dbNameClean);
-              return normalizedRaw.includes(normalizedDb) || normalizedDb.includes(normalizedRaw);
-            });
-
-            if (foundInCoords) {
-              matchedProvinceId = foundInCoords.id;
-            }
-          }
-        } catch (e) {
-          console.error("Lỗi khi tra cứu tọa độ lấy tỉnh:", e);
-        }
-      }
-      setFormData((prev) => ({
-        ...prev,
-        lat,
-        lng,
-        ...(extractedName ? { name: extractedName } : {}),
-        ...(matchedProvinceId ? { province_id: matchedProvinceId } : {})
-      }));
-      if (result.base64) {
-        const file = base64ToFile(result.base64, result.fileName, result.mimeType);
-        setImageFile(file);
-        toast.success("Trích xuất dữ liệu hoàn tất!", { id: toastId });
-      } else {
-        toast.success("Đã lấy dữ liệu (Không có ảnh xem trước)!", { id: toastId });
-      }
-
-    } catch (error) {
-      console.error("Lỗi trích xuất API:", error);
-
-      let lat = "";
-      let lng = "";
-      const exactPinRegex = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
-      let match = mapLink.match(exactPinRegex);
-
-      if (match) {
-        lat = match[1];
-        lng = match[2];
-      } else {
-        const viewportRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-        match = mapLink.match(viewportRegex);
-        if (match) {
-          lat = match[1];
-          lng = match[2];
-        }
-      }
-
-      if (lat && lng) {
-        setFormData((prev) => ({ ...prev, lat, lng }));
-        toast.success("Đã lấy được tọa độ dự phòng!", { id: toastId });
-      } else {
-        toast.error("Không thể trích xuất dữ liệu từ link này.", { id: toastId });
-      }
-    }
-  };
-
-  const removeAccents = (str: string) => {
-    return str
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/đ/g, "d")
-      .replace(/Đ/g, "D");
-  };
-
-  const executeDelete = async (id: string, name: string) => {
-    const toastId = toast.loading(`Đang vô hiệu hóa "${name}"...`);
-
-    try {
-      const { response, data } = await api.delete(`/locations/${id}`);
-
-      if (!response.ok) {
-        throw new Error(data.message || "Lỗi khi xóa địa điểm");
-      }
-
-      toast.success(`Đã xóa "${name}" thành công!`, { id: toastId });
-      sessionStorage.removeItem("locations_cache");
-      fetchLocations();
-    } catch (error) {
-      console.error("Lỗi:", error);
-      toast.error("Xóa thất bại! Vui lòng thử lại.", { id: toastId });
-    }
-  };
-
-  const fetchProvinces = async () => {
-    const cachedData = sessionStorage.getItem("provinces_cache");
-    if (cachedData) {
-      setTimeout(() => {
-        setProvinces(JSON.parse(cachedData));
-      }, 0);
-      return;
-    }
-    try {
-      const response = await fetch(`http://localhost:8000/provinces?limit=1000`);
-      const result = await response.json();
-      let finalData = [];
-      if (Array.isArray(result)) finalData = result;
-      else if (result.data && Array.isArray(result.data)) finalData = result.data;
-      else if (result.data?.data && Array.isArray(result.data.data)) finalData = result.data.data;
-      else if (result.success && result.data) finalData = [result.data];
-
-      setProvinces(finalData);
-      sessionStorage.setItem("provinces_cache", JSON.stringify(finalData));
-    } catch (error) {
-      console.error("Lỗi kết nối:", error);
-    }
-  };
-
-  const fetchLocations = async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: "10",
-        ...(searchQuery && { search: searchQuery }),
-        ...(filterProvince && { province_id: filterProvince })
-      });
-
-      const response = await fetch(`http://localhost:8000/locations?${params}`);
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        setLocations(result.data);
-        setTotalPages(result.totalPages || 1);
-      } else if (Array.isArray(result)) {
-        setLocations(result);
-      }
-    } catch (error) {
-      console.error("Lỗi kết nối:", error);
-      toast.error("Không thể tải danh sách địa điểm!");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const initTimer = setTimeout(() => {
-      fetchProvinces();
-    }, 0);
-
-    const provinceChannel = supabase.channel("custom-province-channel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => {
-        sessionStorage.removeItem("provinces_cache");
-        fetchProvinces();
-      }).subscribe();
-
-    return () => {
-      clearTimeout(initTimer);
-      supabase.removeChannel(provinceChannel);
-    };
-  }, []);
-
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchLocations();
-    }, 500);
-    const locationChannel = supabase.channel("custom-location-channel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, () => {
-        sessionStorage.removeItem("locations_cache");
-        fetchLocations();
-      }).subscribe();
-
-    return () => {
-      supabase.removeChannel(locationChannel);
-      clearTimeout(delayDebounceFn)
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, filterProvince, searchQuery]);
-
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFilterProvince(e.target.value);
-    setCurrentPage(1);
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1);
-  };
-
-  const base64ToFile = (base64String: string, fileName: string, mimeType: string): File => {
-    const arr = base64String.split(',');
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], fileName, { type: mimeType });
-  };
-
-  const handleAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    const toastId = toast.loading("Đang thiết lập tọa độ lên hệ thống...");
-
-    const submitData = new FormData();
-    submitData.append("name", formData.name);
-    if (formData.description) submitData.append("description", formData.description);
-    if (formData.note) submitData.append("note", formData.note);
-    if (formData.lat) submitData.append("lat", formData.lat);
-    if (formData.lng) submitData.append("lng", formData.lng);
-    if (formData.province_id) submitData.append("province_id", formData.province_id);
-    if (formData.difficulty_level) submitData.append("difficulty_level", formData.difficulty_level);
-    if (imageFile) submitData.append("image", imageFile);
-
-    try {
-      const { response, data } = await api.post("/locations", submitData);
-
-      if (!response.ok) {
-        throw new Error(data.message || "Lỗi khi thêm địa điểm");
-      }
-
-      toast.success("Khởi tạo không gian thành công!", { id: toastId });
-
-      setIsAddModalOpen(false);
-      setFormData({ name: "", description: "", note: "", lat: "", lng: "", province_id: "", difficulty_level: "" });
-      setImageFile(null);
-      setMapLink("");
-
-      sessionStorage.removeItem("locations_cache");
-      fetchLocations();
-    } catch (error) {
-      console.error("Lỗi:", error);
-      toast.error("Lưu thất bại! Cổng kết nối có vấn đề.", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pickLocation) {
-      toast.error("Không tìm thấy dữ liệu địa điểm cần sửa!");
-      return;
-    }
-    setIsSaving(true);
-    const toastId = toast.loading("Đang tái cấu trúc địa điểm...");
-
-    const submitData = new FormData();
-    submitData.append("name", formData.name);
-    if (formData.description) submitData.append("description", formData.description);
-    if (formData.note) submitData.append("note", formData.note);
-    if (formData.lat) submitData.append("lat", formData.lat);
-    if (formData.lng) submitData.append("lng", formData.lng);
-    if (formData.province_id) submitData.append("province_id", formData.province_id);
-    if (formData.difficulty_level) submitData.append("difficulty_level", formData.difficulty_level);
-    if (imageFile) {
-      submitData.append("image", imageFile);
-    }
-
-    try {
-      const { response, data } = await api.patch(`/locations/${pickLocation.id}`, submitData);
-
-      if (!response.ok) {
-        throw new Error(data.message || "Lỗi khi sửa địa điểm");
-      }
-
-      toast.success("Cập nhật tọa độ thành công!", { id: toastId });
-
-      setIsEditModalOpen(false);
-      setPickLocation(undefined);
-      setFormData({ name: "", description: "", note: "", lat: "", lng: "", province_id: "", difficulty_level: "" });
-      setImageFile(null);
-      setMapLink("");
-
-      sessionStorage.removeItem("locations_cache");
-      fetchLocations();
-
-    } catch (error) {
-      console.error("Lỗi:", error);
-      toast.error("Cập nhật thất bại! Cổng kết nối có vấn đề.", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // === RENDER GIAO DIỆN ===
   return (
     <div className="min-h-screen pb-12">
       <PageBreadcrumb pageTitle="Quản lý Không gian & Địa điểm" />
-      <Toaster duration={1500} richColors position="bottom-right" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -504,7 +139,7 @@ export default function LocationsPage() {
                       </div>
                     </td>
                   </tr>
-                ) : !Array.isArray(locations) || locations.length === 0 ? (
+                ) : locations.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="px-6 py-16 text-center">
                       <div className="mx-auto max-w-sm flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 border border-dashed border-gray-200 dark:bg-gray-800/30 dark:border-gray-700">
@@ -535,14 +170,14 @@ export default function LocationsPage() {
               </span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  onClick={() => goToPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                   className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-700 shadow-sm transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Quay lại
                 </button>
                 <button
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  onClick={() => goToPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                   className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-700 shadow-sm transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >

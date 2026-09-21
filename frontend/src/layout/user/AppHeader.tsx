@@ -21,9 +21,9 @@ interface AppHeaderProp {
 
 const NavItems = [
     { id: "dashboard", label: "Khám phá", icon: Compass, path: '/' },
-    { id: "trips", label: "Lộ trình của tôi", icon: FolderKanban, path: '/MyItinerary' },
-    { id: "wishlist", label: "Blog", icon: Newspaper, path: '/Blog' },
-    { id: "community", label: "Cộng đồng", icon: UserIcon, path: '/Community' },
+    { id: "trips", label: "Lộ trình của tôi", icon: FolderKanban, path: '/my-itinerary' },
+    { id: "wishlist", label: "Blog", icon: Newspaper, path: '/blog' },
+    { id: "community", label: "Cộng đồng", icon: UserIcon, path: '/community' },
     { id: "ai-planner", label: "AI Planner", icon: Sparkles },
 ];
 
@@ -145,7 +145,7 @@ export const AppHeader = ({
                                             </div>
                                             <div className="py-1">
                                                 <NextLink
-                                                    href="/Profile"
+                                                    href="/profile"
                                                     onClick={() => setIsProfileOpen(false)}
                                                     className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--text-main)] hover:bg-[var(--bg-paper)] transition-colors"
                                                 >

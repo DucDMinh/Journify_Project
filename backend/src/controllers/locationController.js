@@ -1,115 +1,61 @@
 import { locationRepo } from '../repositories/locationRepository.js';
 import { BaseController } from './baseController.js';
 import { uploadImageToStorage, deleteImageFromStorage } from '../helpers/uploadHelper.js';
+import { pick } from '../helpers/object.js';
+import { ok, created } from '../helpers/response.js';
+
+const EDITABLE_FIELDS = ['name', 'description', 'note', 'lat', 'lng', 'province_id', 'difficulty_level', 'img'];
+const STORAGE_FOLDER = 'locations';
+const MAX_PAGE_SIZE = 1000;
 
 class LocationController extends BaseController {
     constructor() {
-        super(locationRepo, "Địa điểm");
+        super(locationRepo, 'Địa điểm');
     }
-    create = async (ctx) => {
-        try {
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
-            console.log("Received file:", file);
-            if (file) {
-                const imageUrl = await uploadImageToStorage(file, 'locations');
-                payload.img = imageUrl;
-            }
-            const data = await this.repository.create(payload);
 
-            ctx.status = 201;
-            ctx.body = { success: true, message: `Tạo mới ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi tạo ${this.itemName}`, error_detail: error.message };
+    getAll = async (ctx) => {
+        const { trending, search = '', province_id: provinceId = '' } = ctx.query;
+        const page = Math.max(1, parseInt(ctx.query.page, 10) || 1);
+        const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(ctx.query.limit, 10) || 5));
+
+        if (trending === 'true') {
+            ok(ctx, await locationRepo.getMostSaved(limit));
+            return;
         }
-    }
+        const { data, count } = await locationRepo.getPaginated({ page, limit, search, provinceId });
+        ok(ctx, data, undefined, 200, {
+            total: count,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page,
+        });
+    };
+
+    create = async (ctx) => {
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        ctx.assert(payload.name, 400, 'Tên địa điểm là bắt buộc');
+        if (ctx.request.file) payload.img = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+        created(ctx, await locationRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
+    };
 
     update = async (ctx) => {
-        try {
-            const id = ctx.params.id;
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
-
-            const oldLocation = await this.repository.getById(id);
-            if (!oldLocation) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để cập nhật!` };
-                return;
-            }
-
-            if (file) {
-                payload.img = await uploadImageToStorage(file);
-
-                if (oldLocation.img) {
-                    await deleteImageFromStorage(oldLocation.img);
-                }
-            }
-
-            const data = await this.repository.update(id, payload);
-
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Cập nhật ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi cập nhật ${this.itemName}`, error_detail: error.message };
+        const { id } = ctx.params;
+        const existing = await this.findOr404(id);
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        if (ctx.request.file) {
+            payload.img = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+            await deleteImageFromStorage(existing.img);
         }
-    }
+        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
+        ok(ctx, await locationRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+    };
+
     delete = async (ctx) => {
-        try {
-            const id = ctx.params.id;
-
-            const oldLocation = await this.repository.getById(id);
-            if (!oldLocation) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để xóa!` };
-                return;
-            }
-
-            const data = await this.repository.delete(id);
-
-            if (data && oldLocation.img) {
-                await deleteImageFromStorage(oldLocation.img);
-            }
-
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Xóa ${this.itemName} và dọn dẹp ảnh thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi xóa ${this.itemName}`, error_detail: error.message };
-        }
-    }
-    getAll = async (ctx) => {
-        try {
-            const page = parseInt(ctx.query.page) || 1;
-            const limit = parseInt(ctx.query.limit) || 5;
-            const { trending, search } = ctx.query;
-            const province_id = ctx.query.province_id || '';
-            if (trending === 'true') {
-                const { data, error } = await this.repository.getFavor(limit);
-                if (error) console.log('error', error);
-                ctx.status = 200;
-                ctx.body = {
-                    success: true,
-                    data: data,
-                };
-            } else {
-                const { data, count, error } = await this.repository.getAll(page, limit, search, province_id);
-                if (error) throw error;
-                ctx.status = 200;
-                ctx.body = {
-                    success: true,
-                    data: data,
-                    total: count,
-                    totalPages: Math.ceil(count / limit),
-                    currentPage: page
-                };
-            }
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi lấy danh sách ${this.itemName}`, error_detail: error.message };
-        }
-    }
+        const { id } = ctx.params;
+        const existing = await this.findOr404(id);
+        const deleted = await locationRepo.delete(id);
+        await deleteImageFromStorage(existing.img);
+        ok(ctx, deleted, `Xóa ${this.itemName} thành công`);
+    };
 }
 
 const locationController = new LocationController();

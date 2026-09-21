@@ -30,7 +30,7 @@ export default function AdminOrderManagement() {
         return orders.filter((order) => {
             const matchesSearch =
                 order.order_code.toString().includes(searchQuery) ||
-                order.user_id.name.toLowerCase().includes(searchQuery.toLowerCase());
+                (order.user_id?.name ?? "").toLowerCase().includes(searchQuery.toLowerCase());
             const matchesStatus = activeTab === "ALL" || order.status === activeTab;
             return matchesSearch && matchesStatus;
         });
@@ -38,9 +38,9 @@ export default function AdminOrderManagement() {
 
     const fetchOrderData = async () => {
         try {
-            const { data, response } = await api.get('/orders');
-            if (!response.ok) throw new Error(`Co loi xay ra: ${data.error}`);
-            setOrders(data.data)
+            const { data, response } = await api.get<Order[]>('/orders');
+            if (!response.ok) throw new Error(data.message || "Không tải được đơn hàng");
+            setOrders(data.data ?? []);
         } catch (error) {
             toast.error(`Loi: ${error}`)
         }

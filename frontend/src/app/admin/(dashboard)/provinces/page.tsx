@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { supabase } from "@/utils/supabaseClient";
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 import { Plus, MapPin, Search, Globe, Sparkles, Map } from "lucide-react";
 import { Province } from "@/interface";
 import { ProvinceTable } from "@/components/tables/admin/provinceTable";
@@ -36,8 +36,7 @@ export default function ProvincesPage() {
             toast.success(`Đã xóa "${name}" thành công!`, { id: toastId });
             sessionStorage.removeItem("provinces_cache");
             fetchProvinces();
-        } catch (error) {
-            console.error("Lỗi:", error);
+        } catch {
             toast.error("Xóa thất bại! Vui lòng thử lại.", { id: toastId });
         }
     };
@@ -45,16 +44,10 @@ export default function ProvincesPage() {
     const fetchProvinces = async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`http://localhost:8000/provinces`);
-            const result = await response.json();
-
-            if (result.success && result.data) {
-                setProvinces(result.data);
-            } else if (Array.isArray(result)) {
-                setProvinces(result);
-            }
-        } catch (error) {
-            console.error("Lỗi kết nối:", error);
+            const { response, data } = await api.get<Province[]>("/provinces");
+            if (!response.ok) throw new Error(data.message);
+            setProvinces(data.data ?? []);
+        } catch {
             toast.error("Không thể tải danh sách tỉnh/thành phố!");
         } finally {
             setIsLoading(false);
@@ -62,19 +55,12 @@ export default function ProvincesPage() {
     };
 
     useEffect(() => {
-        const initTimer = setTimeout(() => {
-            fetchProvinces();
-        }, 0);
-
-        const provinceChannel = supabase.channel("custom-province-channel")
-            .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => {
-                sessionStorage.removeItem("provinces_cache");
-                fetchProvinces();
-            }).subscribe();
-
+        fetchProvinces();
+        const provinceChannel = supabase.channel("admin-provinces-page")
+            .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => fetchProvinces())
+            .subscribe();
         return () => {
             supabase.removeChannel(provinceChannel);
-            clearTimeout(initTimer);
         };
     }, []);
 
@@ -99,8 +85,7 @@ export default function ProvincesPage() {
             sessionStorage.removeItem("provinces_cache");
             fetchProvinces();
         } catch (error) {
-            console.error("Lỗi:", error);
-            toast.error("Lưu thất bại! Cổng kết nối có vấn đề.", { id: toastId });
+            toast.error(error instanceof Error ? error.message : "Lưu thất bại!", { id: toastId });
         } finally {
             setIsSaving(false);
         }
@@ -128,8 +113,7 @@ export default function ProvincesPage() {
             sessionStorage.removeItem("provinces_cache");
             fetchProvinces();
         } catch (error) {
-            console.error("Lỗi:", error);
-            toast.error("Cập nhật thất bại! Cổng kết nối có vấn đề.", { id: toastId });
+            toast.error(error instanceof Error ? error.message : "Cập nhật thất bại!", { id: toastId });
         } finally {
             setIsSaving(false);
         }
@@ -150,7 +134,6 @@ export default function ProvincesPage() {
     return (
         <div className="min-h-screen pb-12">
             <PageBreadcrumb pageTitle="Quản lý Tỉnh/Thành phố" />
-            <Toaster duration={1500} richColors position="bottom-right" />
 
             <motion.div
                 initial={{ opacity: 0, y: 20 }}

@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { api } from "@/lib/apiClient";
+import { User } from "@/interface";
 import { usePayOS } from "@payos/payos-checkout";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Crown, X } from "lucide-react";
@@ -20,12 +18,15 @@ const features = [
     "Hỗ trợ ưu tiên 24/7 từ đội ngũ"
 ];
 
+// Giá hiển thị (nghìn VNĐ) phải khớp PREMIUM_PLANS ở backend; số tiền thực tế do backend quyết định.
 const plans = [
     { id: 1, months: 1, price: 10, title: "1 Tháng" },
     { id: 3, months: 3, price: 25, title: "3 Tháng" },
     { id: 6, months: 6, price: 40, title: "6 Tháng", isPopular: true },
     { id: 12, months: 12, price: 60, title: "1 Năm" },
 ];
+const DEFAULT_PLAN_ID = 6;
+const REFRESH_DELAY_MS = 2000;
 
 const Message = ({ message }: { message: string }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
@@ -46,87 +47,72 @@ const Message = ({ message }: { message: string }) => (
 );
 
 export function PremiumModal({ onClose }: PremiumModalProps) {
-    const [selectedPlan, setSelectedPlan] = useState<number>(40);
+    const [selectedPlanId, setSelectedPlanId] = useState<number>(DEFAULT_PLAN_ID);
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [isCreatingLink, setIsCreatingLink] = useState(false);
-    const { user: currentUser, login } = useAuth();
-    const [orderId, setOrderId] = useState('');
+    const { login } = useAuth();
+    const [orderId, setOrderId] = useState("");
+    const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? plans[0];
+
+    const refreshSessionAfterPayment = async () => {
+        const toastId = toast.loading("Thanh toán thành công! Đang cập nhật hệ thống...");
+        try {
+            const { data, response } = await api.get<undefined>("/auth/refresh-token");
+            if (!response.ok) throw new Error(data.message);
+            login(data.token as string, data.user as User);
+            toast.success("Tài khoản đã được nâng cấp Premium 👑", { id: toastId });
+            setMessage("Cảm ơn bạn! Tài khoản của bạn đã là Premium.");
+        } catch {
+            toast.error("Có lỗi khi làm mới dữ liệu, vui lòng F5 trang.", { id: toastId });
+        }
+    };
+
     const [payOSConfig, setPayOSConfig] = useState({
         RETURN_URL: window.location.href,
         ELEMENT_ID: "embedded-payment-container",
-        CHECKOUT_URL: '',
+        CHECKOUT_URL: "",
         embedded: true,
-        onSuccess: (event: any) => {
+        onSuccess: () => {
             setIsOpen(false);
-            const toastId = toast.loading("Thanh toán thành công! Đang cập nhật hệ thống...");
-            setTimeout(async () => {
-                try {
-                    const { data, response } = await api.get('/auth/refresh-token');
-                    if (!response.ok) throw new Error("Co loi xay ra")
-                    login(data.token, data.user);
-                    toast.success("Tài khoản đã được nâng cấp Premium 👑", { id: toastId });
-                    setMessage("Cảm ơn bạn! Tài khoản của bạn đã là Premium.");
-                } catch (error) {
-                    toast.error("Có lỗi khi làm mới dữ liệu, vui lòng F5 trang.", { id: toastId });
-                }
-            }, 2000);
+            setTimeout(refreshSessionAfterPayment, REFRESH_DELAY_MS);
         },
-        onCancel: (event: any) => {
-            console.log("Khách đã hủy thanh toán:", event);
+        onCancel: () => {
             setIsOpen(false);
-            setPayOSConfig((old) => ({ ...old, CHECKOUT_URL: '' }));
-            exit();
-        }
+            setPayOSConfig((old) => ({ ...old, CHECKOUT_URL: "" }));
+        },
     });
 
-    const handleCreateOrder = async (selectedPlan: number) => {
+    const handleCreateOrder = async () => {
         setIsCreatingLink(true);
         const toastId = toast.loading("Đang khởi tạo giao dịch...");
-        const currentUrl = window.location.href;
         try {
-            const { data, response } = await api.post('/create-embedded-payment-link', {
-                selectedPlan: selectedPlan,
-                userId: currentUser?.id,
-                returnUrl: currentUrl
+            const { data, response } = await api.post<undefined>("/payments/premium", {
+                planId: selectedPlanId,
+                returnUrl: window.location.href,
             });
-
-            if (!response.ok) {
-                throw new Error(data.message || "Có lỗi xảy ra khi tạo giao dịch");
-            }
-            setOrderId(data.orderId);
-            setPayOSConfig((oldConfig) => ({
-                ...oldConfig,
-                CHECKOUT_URL: data.checkoutUrl,
-            }));
-
+            if (!response.ok) throw new Error(data.message || "Có lỗi xảy ra khi tạo giao dịch");
+            setOrderId(String(data.orderId));
+            setPayOSConfig((oldConfig) => ({ ...oldConfig, CHECKOUT_URL: String(data.checkoutUrl) }));
             toast.success("Khởi tạo thành công!", { id: toastId });
             setIsOpen(true);
-
-        } catch (error: any) {
-            toast.error(error.message, { id: toastId });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Có lỗi xảy ra", { id: toastId });
         } finally {
             setIsCreatingLink(false);
         }
     };
 
-    const handleCancelOrder = async (orderId: string) => {
-        try {
-            const { data, response } = await api.patch(`/orders/${orderId}`, { status: "CANCEL" })
-            if (!response.ok) throw new Error(data.message);
-        } catch (error) {
-            console.log(error)
-        }
-    }
+    const handleCancelOrder = async (id: string) => {
+        if (!id) return;
+        await api.patch(`/orders/${id}`, { status: "CANCEL" }).catch(() => undefined);
+    };
 
     const { open, exit } = usePayOS(payOSConfig);
 
-
     useEffect(() => {
-        if (payOSConfig.CHECKOUT_URL != '') {
-            open();
-        }
-    }, [payOSConfig]);
+        if (payOSConfig.CHECKOUT_URL !== "") open();
+    }, [payOSConfig.CHECKOUT_URL, open]);
 
     return message ? (
         <Message message={message} />
@@ -207,7 +193,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
 
                         <div className="grid grid-cols-2 gap-3 relative z-10 mb-5">
                             {plans.map((plan) => {
-                                const isSelected = selectedPlan === plan.price;
+                                const isSelected = selectedPlanId === plan.id;
                                 const basePrice = 10;
                                 const originalTotal = basePrice * plan.months;
                                 const savedPercent = plan.months > 1
@@ -217,7 +203,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                                 return (
                                     <div
                                         key={plan.id}
-                                        onClick={() => !isOpen && setSelectedPlan(plan.price)}
+                                        onClick={() => !isOpen && setSelectedPlanId(plan.id)}
                                         className={`relative flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all duration-300 text-center ${isOpen ? "cursor-default opacity-80" : "cursor-pointer"
                                             } ${isSelected
                                                 ? "border-orange-500 bg-orange-500/10 shadow-sm"
@@ -254,7 +240,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                                 id="create-payment-link-btn"
                                 onClick={(event) => {
                                     event.preventDefault();
-                                    handleCreateOrder(selectedPlan);
+                                    handleCreateOrder();
                                 }}
                                 disabled={isCreatingLink}
                                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-yellow-500 text-white text-sm font-bold shadow-lg shadow-orange-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:hover:scale-100 relative z-10"
@@ -267,7 +253,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                                 ) : (
                                     <>
                                         <Crown className="w-4 h-4" />
-                                        <span>Nâng cấp ngay với {selectedPlan}K</span>
+                                        <span>Nâng cấp ngay với {selectedPlan.price}K</span>
                                     </>
                                 )}
                             </button>

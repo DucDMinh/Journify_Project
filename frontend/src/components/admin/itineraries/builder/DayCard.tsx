@@ -2,11 +2,11 @@ import { Itinerary_days, Itinerary_locations } from "@/interface";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp, DollarSign, MapPin, Trash2 } from "lucide-react";
 import { DroppableActivityZone, DroppableAddButton } from "./ActivityDropZone";
+import type { UpdateActivityFn } from "@/hooks/admin/itineraries/useItineraryBuilder";
 interface DayCardProp {
     days: Itinerary_days[];
     handleRemoveActivity: (dayId: string, activityId: string) => void;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handleUpdateActivity: (dayId: string, activityId: string, field: string | object, value?: any) => void;
+    handleUpdateActivity: UpdateActivityFn;
     handleMoveActivity: (dayId: string, activityId: string, direction: 'UP' | 'DOWN') => void;
     setIsMapModalOpen: (isOpen: boolean) => void;
     setCurrentActiveDayId: (id: string | null) => void;
@@ -80,8 +80,7 @@ export const DayCard = ({
                                                 </div>
                                                 <button
                                                     onClick={() => {
-                                                        handleUpdateActivity(day.id, loc.id, 'location_id', "");
-                                                        handleUpdateActivity(day.id, loc.id, 'location_name', "");
+                                                        handleUpdateActivity(day.id, loc.id, { location_id: "", location_name: "" });
                                                     }}
                                                     className="text-xs text-gray-400 hover:text-red-500 px-2 shrink-0 transition-colors"
                                                 >

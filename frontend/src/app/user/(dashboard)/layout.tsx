@@ -43,7 +43,7 @@ export default function UserDashboardLayout({
     const { user: currentUser } = useAuth();
     useEffect(() => {
         if (pathname === "/") setActiveNav("dashboard");
-        else if (pathname.includes("/MyItinerary")) setActiveNav("trips");
+        else if (pathname.includes("/my-itinerary")) setActiveNav("trips");
         else if (pathname.includes("/wishlist")) setActiveNav("wishlist");
     }, [pathname]);
     useEffect(() => {

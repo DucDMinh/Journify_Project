@@ -113,9 +113,9 @@ export default function JournifyUserDashboard() {
     }, []);
     const fetchItineraries = async () => {
         try {
-            const { data, response } = await api.get('/itineraries?trending=weekly');
+            const { data, response } = await api.get<Itinerary[]>('/itineraries?trending=weekly');
             if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu");
-            const itineraries_data: Itinerary[] = data?.data?.data || data?.data || data || [];
+            const itineraries_data: Itinerary[] = data.data || [];
             setItineraries(itineraries_data);
             const trending = itineraries_data.filter(i => i.share).slice(0, 3);
             setTrendingItineraries(trending.length > 0 ? trending : itineraries_data.slice(0, 5));
@@ -125,9 +125,9 @@ export default function JournifyUserDashboard() {
     };
     const fetchFavLocations = async () => {
         try {
-            const { data, response } = await api.get('/locations?trending=true&limit=4');
+            const { data, response } = await api.get<Location[]>('/locations?trending=true&limit=4');
             if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu");
-            const favor_locations: Location[] = data?.data?.data || data?.data || data || [];
+            const favor_locations: Location[] = data.data || [];
             setWishlist(favor_locations);
         } catch (error: any) {
             notify(error.message || "Không thể tải dữ liệu", "⚠️");
@@ -146,9 +146,9 @@ export default function JournifyUserDashboard() {
     const handleCloneTrip = async (iti: Itinerary) => {
         const toastId = toast.loading("Đang clone...");
         try {
-            const { data: responseData, response: full_response } = await api.get(`/itineraries/${iti.id}`);
-            if (!full_response.ok) throw new Error(responseData.message || "Lỗi khi lấy dữ liệu lộ trình");
-            const full_iti = responseData.data.data || responseData;
+            const { data: responseData, response: full_response } = await api.get<Itinerary>(`/itineraries/${iti.id}`);
+            if (!full_response.ok || !responseData.data) throw new Error(responseData.message || "Lỗi khi lấy dữ liệu lộ trình");
+            const full_iti = responseData.data;
             const {
                 id,
                 created_at,
@@ -184,9 +184,9 @@ export default function JournifyUserDashboard() {
     const handleViewDetailItinerary = async (id: string) => {
         const toastId = toast.loading("...");
         try {
-            const { data, response } = await api.get(`/itineraries/${id}`)
-            if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu lộ trình");
-            setActiveTripDetail(data.data.data)
+            const { data, response } = await api.get<Itinerary>(`/itineraries/${id}`)
+            if (!response.ok || !data.data) throw new Error(data.message || "Lỗi khi lấy dữ liệu lộ trình");
+            setActiveTripDetail(data.data)
             toast.success("ok", { id: toastId })
         } catch (err: any) {
             console.error("Lỗi clone:", err);
@@ -293,7 +293,7 @@ export default function JournifyUserDashboard() {
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => router.push('/MyItinerary')}
+                                            onClick={() => router.push('/my-itinerary')}
                                             className="mt-6 w-full py-2.5 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm font-bold hover:bg-[var(--accent-primary)] hover:text-white transition"
                                         >
                                             Quản lý lộ trình
@@ -373,11 +373,7 @@ function CreateTripModal({ onClose, onSuccess, currentUser, notify }: { onClose:
         e.preventDefault();
         if (!title.trim() || !destination.trim()) { notify("Vui lòng điền đầy đủ thông tin", "⚠️"); return; }
         const newTrip: Itinerary = {
-            id: `manual-${Date.now()}`, title, summary: `Lộ trình ${days} ngày tại ${destination}`, start_date: startDate?.toISOString() || new Date().toISOString(), end_date: startDate ? new Date(startDate.getTime() + days * 86400000).toISOString() : new Date(Date.now() + days * 86400000).toISOString(), theme: theme, days: days, nights: days - 1, estimated_cost: budget, image_url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop", share: false, user_id: {
-                name: currentUser?.name ?? "", avatar: currentUser?.avatar ?? "", id: "", email: "", role: "USER", status: "active", created_at: "", itineraries: [], phone_number: 0,
-                background_image: "",
-                is_premium: false
-            }, itinerary_provinces: [{ provinces: { name: destination, id: "" } }], itinerary_days: []
+            id: `manual-${Date.now()}`, title, summary: `Lộ trình ${days} ngày tại ${destination}`, start_date: startDate?.toISOString() || new Date().toISOString(), end_date: startDate ? new Date(startDate.getTime() + days * 86400000).toISOString() : new Date(Date.now() + days * 86400000).toISOString(), theme: theme, days: days, nights: days - 1, estimated_cost: budget, image_url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop", share: false, user_id: currentUser ? { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar } : null, itinerary_provinces: [{ provinces: { name: destination, id: "" } }], itinerary_days: []
         };
         onSuccess(newTrip);
     };

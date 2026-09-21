@@ -5,18 +5,18 @@ import itineraryRoutes from './itinerary.routes.js';
 import authRoutes from './auth.routes.js';
 import userRoutes from './user.routes.js';
 import aiRoutes from './ai.routes.js';
-import payosRouter from './payos.routes.js';
-import orderRouter from './order.routes.js'
-import blogRoutes from './blog.routes.js'
+import paymentRoutes from './payment.routes.js';
+import orderRoutes from './order.routes.js';
+import blogRoutes from './blog.routes.js';
+import mapRoutes from './map.routes.js';
+
 const router = new Router();
 
-router.use(locationRoutes.routes(), locationRoutes.allowedMethods());
-router.use(provinceRoutes.routes(), provinceRoutes.allowedMethods());
-router.use(itineraryRoutes.routes(), itineraryRoutes.allowedMethods());
-router.use(blogRoutes.routes(), blogRoutes.allowedMethods());
-router.use(authRoutes.routes(), authRoutes.allowedMethods());
-router.use(userRoutes.routes(), userRoutes.allowedMethods())
-router.use(aiRoutes.routes(), aiRoutes.allowedMethods());
-router.use(payosRouter.routes(), payosRouter.allowedMethods());
-router.use(orderRouter.routes(), orderRouter.allowedMethods())
+for (const routes of [
+    authRoutes, userRoutes, provinceRoutes, locationRoutes, itineraryRoutes,
+    blogRoutes, aiRoutes, paymentRoutes, orderRoutes, mapRoutes,
+]) {
+    router.use(routes.routes(), routes.allowedMethods());
+}
+
 export default router;

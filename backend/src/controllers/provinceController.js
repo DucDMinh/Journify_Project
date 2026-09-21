@@ -1,75 +1,43 @@
 import { provinceRepo } from '../repositories/provinceRepository.js';
 import { BaseController } from './baseController.js';
 import { uploadImageToStorage, deleteImageFromStorage } from '../helpers/uploadHelper.js';
+import { pick } from '../helpers/object.js';
+import { ok, created } from '../helpers/response.js';
+
+const EDITABLE_FIELDS = ['name', 'description', 'best_time_to_visit', 'height', 'image_url'];
+const STORAGE_FOLDER = 'provinces';
 
 class ProvinceController extends BaseController {
     constructor() {
-        super(provinceRepo, "Tỉnh thành");
+        super(provinceRepo, 'Tỉnh thành');
     }
-    create = async (ctx) => {
-        try {
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
-            if (file) {
-                const imageUrl = await uploadImageToStorage(file, 'provinces');
-                payload.image_url = imageUrl;
-            }
-            const data = await this.repository.create(payload);
 
-            ctx.status = 201;
-            ctx.body = { success: true, message: `Tạo mới ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi tạo ${this.itemName}`, error_detail: error.message };
-        }
-    }
+    create = async (ctx) => {
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        ctx.assert(payload.name, 400, 'Tên tỉnh thành là bắt buộc');
+        if (ctx.request.file) payload.image_url = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+        created(ctx, await provinceRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
+    };
 
     update = async (ctx) => {
-        try {
-            const id = ctx.params.id;
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
+        const { id } = ctx.params;
+        const existing = await this.findOr404(id);
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        if (ctx.request.file) {
+            payload.image_url = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+            await deleteImageFromStorage(existing.image_url);
+        }
+        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
+        ok(ctx, await provinceRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+    };
 
-            const oldProvince = await this.repository.getById(id);
-            if (!oldProvince) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để cập nhật!` };
-                return;
-            }
-            if (file) {
-                payload.image_url = await uploadImageToStorage(file);
-                if (oldProvince.image_url) {
-                    await deleteImageFromStorage(oldProvince.image_url);
-                }
-            }
-            const data = await this.repository.update(id, payload);
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Cập nhật ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi cập nhật ${this.itemName}`, error_detail: error.message };
-        }
-    }
     delete = async (ctx) => {
-        try {
-            const id = ctx.params.id;
-            const oldProvince = await this.repository.getById(id);
-            if (!oldProvince) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để xóa!` };
-                return;
-            }
-            const data = await this.repository.delete(id);
-            if (data && oldProvince.img) {
-                await deleteImageFromStorage(oldProvince.img);
-            }
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Xóa ${this.itemName} và dọn dẹp ảnh thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi xóa ${this.itemName}`, error_detail: error.message };
-        }
-    }
+        const { id } = ctx.params;
+        const existing = await this.findOr404(id);
+        const deleted = await provinceRepo.delete(id);
+        await deleteImageFromStorage(existing.image_url);
+        ok(ctx, deleted, `Xóa ${this.itemName} thành công`);
+    };
 }
 
 const provinceController = new ProvinceController();

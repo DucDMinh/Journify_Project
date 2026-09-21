@@ -38,9 +38,9 @@ export default function UserProfilePage() {
         setIsLoading(true);
         try {
             if (!currentUser?.id) return;
-            const { data, response } = await api.get(`/users/${currentUser?.id}`);
-            if (!response.ok) throw new Error(data.message || `Lỗi khi lấy dữ liệu người dùng`);
-            const userData = data?.data || data?.data?.data;
+            const { data, response } = await api.get<User>(`/users/${currentUser?.id}`);
+            if (!response.ok || !data.data) throw new Error(data.message || `Lỗi khi lấy dữ liệu người dùng`);
+            const userData = data.data;
             setUser(userData);
             setFormData({
                 name: userData?.name || "",
@@ -86,13 +86,13 @@ export default function UserProfilePage() {
             }
 
             const { response, data } = await api.patch(`/users/${user.id}`, body);
-            if (!response.ok) throw new Error(data?.error_detail || "Cập nhật thất bại!");
+            if (!response.ok) throw new Error(data.message || "Cập nhật thất bại!");
             toast.success("Cập nhật thông tin thành công!", { id: toastId });
             setAvatarFile(null);
             setBgFile(null);
-            const { data: data1, response: response1 } = await api.get('/auth/refresh-token');
-            if (!response1.ok) throw new Error(data1?.error_detail || "Cập nhật thất bại!");
-            login(data1.token, data1.user)
+            const { data: data1, response: response1 } = await api.get<undefined>('/auth/refresh-token');
+            if (!response1.ok) throw new Error(data1.message || "Cập nhật thất bại!");
+            login(data1.token as string, data1.user as User)
 
         } catch (error: any) {
             console.error("Lỗi cập nhật:", error);

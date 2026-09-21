@@ -1,53 +1,55 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
-async function verifyAuthToken(token: string | undefined): Promise<{ valid: boolean; decoded?: any; reason?: string }> {
-    if (!token) {
-        return { valid: false, reason: 'MISSING_TOKEN' };
+import { jwtVerify, type JWTPayload } from 'jose';
+
+const ADMIN_HOST = process.env.NEXT_PUBLIC_ADMIN_HOST ?? 'admin.localhost';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+const PROTECTED_USER_ROUTES = ['/my-itinerary', '/settings', '/blog', '/profile'];
+const FLASH_COOKIE_MAX_AGE = 10;
+
+type TokenState =
+    | { valid: true; payload: JWTPayload & { role?: string } }
+    | { valid: false; reason: 'MISSING_TOKEN' | 'EXPIRED' | 'INVALID' };
+
+async function verifyAuthToken(token: string | undefined): Promise<TokenState> {
+    if (!token) return { valid: false, reason: 'MISSING_TOKEN' };
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        console.error('JWT_SECRET chưa được cấu hình cho frontend proxy');
+        return { valid: false, reason: 'INVALID' };
     }
     try {
-        const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_for_dev');
-        const { payload } = await jwtVerify(token, secret);
-        return { valid: true, decoded: payload };
-    } catch (error: any) {
-        if (error.code === 'ERR_JWT_EXPIRED') {
-            console.log("Token đã hết hạn!");
-            return { valid: false, reason: 'EXPIRED' };
-        }
-        console.log("Token không hợp lệ hoặc sai chữ ký:", error.message);
-        return { valid: false, reason: 'INVALID' };
+        const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+        return { valid: true, payload };
+    } catch (error) {
+        const code = (error as { code?: string }).code;
+        return { valid: false, reason: code === 'ERR_JWT_EXPIRED' ? 'EXPIRED' : 'INVALID' };
     }
 }
 
+const clearSession = (response: NextResponse, toastError?: string) => {
+    response.cookies.delete('accessToken');
+    response.cookies.set('clear_storage', 'true', { path: '/', maxAge: FLASH_COOKIE_MAX_AGE });
+    if (toastError) response.cookies.set('toast_error', toastError, { path: '/', maxAge: FLASH_COOKIE_MAX_AGE });
+    return response;
+};
+
 export async function proxy(request: NextRequest) {
     const url = request.nextUrl;
-    const hostHeader = request.headers.get('host') || '';
-    const hostname = hostHeader.split(':')[0];
+    const hostname = (request.headers.get('host') ?? '').split(':')[0];
+    const auth = await verifyAuthToken(request.cookies.get('accessToken')?.value);
 
-    const token = request.cookies.get('accessToken')?.value;
-    const { valid: isTokenAlive, decoded, reason } = await verifyAuthToken(token);
-    const errorType = reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'unauthorized';
-
-    if (hostname === 'admin.localhost') {
+    if (hostname === ADMIN_HOST) {
         if (url.pathname.startsWith('/auth/signin')) {
-            const targetPath = `/admin${url.pathname}`;
-            return NextResponse.rewrite(new URL(targetPath, request.url));
+            return NextResponse.rewrite(new URL(`/admin${url.pathname}`, request.url));
         }
-
-        if (!isTokenAlive) {
-            const loginUrl = new URL('/auth/signin', request.url);
-            const response = NextResponse.redirect(loginUrl);
-            response.cookies.delete('accessToken');
-            response.cookies.set('toast_error', errorType, { path: '/', maxAge: 10 });
-            response.cookies.set('clear_storage', 'true', { path: '/', maxAge: 10 });
-            return response;
+        if (!auth.valid) {
+            const toastError = auth.reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'unauthorized';
+            return clearSession(NextResponse.redirect(new URL('/auth/signin', request.url)), toastError);
         }
-
-        if (decoded?.role !== 'ADMIN') {
-            return NextResponse.redirect(new URL('http://localhost:3000/'));
+        if (auth.payload.role !== 'ADMIN') {
+            return NextResponse.redirect(new URL('/', APP_URL));
         }
-
         const targetPath = url.pathname === '/' ? '/admin' : `/admin${url.pathname}`;
         return NextResponse.rewrite(new URL(targetPath, request.url));
     }
@@ -56,30 +58,14 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(new URL('/', request.url));
     }
 
-    const protectedUserRoutes = ['/MyItinerary', '/settings', '/Blog'];
-    const isAccessingProtectedRoute = protectedUserRoutes.some(route =>
-        url.pathname.startsWith(route)
-    );
+    const isProtectedRoute = PROTECTED_USER_ROUTES.some((route) => url.pathname.startsWith(route));
 
-    if (!isTokenAlive) {
-        if (reason === 'MISSING_TOKEN' && !isAccessingProtectedRoute) {
-        }
-        else {
-            let response;
-            if (isAccessingProtectedRoute) {
-                response = NextResponse.redirect(new URL('/auth/signin', request.url));
-            } else {
-                response = NextResponse.next();
-            }
-            response.cookies.delete('accessToken');
-            response.cookies.set('clear_storage', 'true', { path: '/', maxAge: 10 });
-            if (reason === 'EXPIRED') {
-                response.cookies.set('toast_error', 'TOKEN_EXPIRED', { path: '/', maxAge: 10 });
-            } else if (isAccessingProtectedRoute) {
-                response.cookies.set('toast_error', 'unauthorized', { path: '/', maxAge: 10 });
-            }
-            return response;
-        }
+    if (!auth.valid && (auth.reason !== 'MISSING_TOKEN' || isProtectedRoute)) {
+        const response = isProtectedRoute
+            ? NextResponse.redirect(new URL('/auth/signin', request.url))
+            : NextResponse.next();
+        const toastError = auth.reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : isProtectedRoute ? 'unauthorized' : undefined;
+        return clearSession(response, toastError);
     }
 
     if (!url.pathname.startsWith('/user')) {

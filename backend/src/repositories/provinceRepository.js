@@ -1,5 +1,4 @@
-import { BaseRepository } from './repo.js';
-import { supabase } from '../config/supabaseClient.js';
+import { BaseRepository, unwrap } from './repo.js';
 
 class ProvinceRepository extends BaseRepository {
     constructor() {
@@ -7,21 +6,19 @@ class ProvinceRepository extends BaseRepository {
     }
 
     async getAll() {
-        const { data, error } = await supabase
-            .from('provinces')
-            .select('*, locations(id, name)')
-            .order('name', { ascending: true });
-        if (error) throw error;
-        return data;
+        return unwrap(
+            await this.table()
+                .select('*, locations(id, name)')
+                .order('name', { ascending: true }),
+        );
     }
+
     async getById(id) {
-        const { data, error } = await supabase
-            .from(this.tableName)
-            .select('*, locations(*)')
-            .eq('id', id)
-            .single();
-        if (error) throw error;
-        return data;
+        return unwrap(await this.table().select('*, locations(*)').eq('id', id).maybeSingle());
+    }
+
+    async findByName(name) {
+        return unwrap(await this.table().select('id, name').ilike('name', `%${name}%`).limit(1).maybeSingle());
     }
 }
 

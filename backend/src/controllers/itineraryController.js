@@ -1,131 +1,81 @@
-import { itineraryRepo } from "../repositories/itineraryRepository.js";
-import { BaseController } from "./baseController.js";
+import { itineraryRepo } from '../repositories/itineraryRepository.js';
+import { BaseController } from './baseController.js';
+import { isAdmin, isOwnerOrAdmin } from '../middleware/auth.middleware.js';
+import { pick, toNumber, toBoolean, parseJsonField } from '../helpers/object.js';
+import { ok, created } from '../helpers/response.js';
+
+const EDITABLE_FIELDS = [
+    'title', 'theme', 'summary', 'start_date', 'end_date', 'days', 'nights',
+    'estimated_cost', 'image_url', 'share', 'itinerary_days', 'itinerary_provinces', 'cloned_from_id',
+];
+
+const normalizePayload = (ctx) => {
+    const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+    try {
+        if (payload.itinerary_days !== undefined) payload.itinerary_days = parseJsonField(payload.itinerary_days);
+        if (payload.itinerary_provinces !== undefined) payload.itinerary_provinces = parseJsonField(payload.itinerary_provinces);
+    } catch {
+        ctx.throw(400, 'Định dạng JSON của lộ trình không hợp lệ');
+    }
+    for (const field of ['estimated_cost', 'nights', 'days']) {
+        if (payload[field] !== undefined) payload[field] = toNumber(payload[field]);
+    }
+    if (payload.share !== undefined) payload.share = toBoolean(payload.share);
+    return payload;
+};
 
 class ItineraryController extends BaseController {
     constructor() {
-        super(itineraryRepo, "Lộ trình");
+        super(itineraryRepo, 'Lộ trình');
     }
+
+    async assertOwner(ctx, id) {
+        const ownerId = await itineraryRepo.getOwnerId(id);
+        ctx.assert(ownerId !== null, 404, `Không tìm thấy ${this.itemName}!`);
+        ctx.assert(isOwnerOrAdmin(ctx.state.user, ownerId), 403, 'Bạn không có quyền thao tác trên lộ trình này');
+    }
+
+    getAll = async (ctx) => {
+        const { trending, is_public } = ctx.query;
+        if (trending === 'weekly') {
+            ok(ctx, await itineraryRepo.getTrending());
+            return;
+        }
+        const publicOnly = !isAdmin(ctx.state.user) || is_public === 'true';
+        ok(ctx, await itineraryRepo.getAll({ publicOnly }));
+    };
+
+    getById = async (ctx) => {
+        const itinerary = await this.findOr404(ctx.params.id);
+        const canView = itinerary.share === true || isOwnerOrAdmin(ctx.state.user, itinerary.user_id);
+        ctx.assert(canView, 403, 'Lộ trình này không được chia sẻ công khai');
+        ok(ctx, itinerary);
+    };
+
+    getMine = async (ctx) => {
+        ok(ctx, await itineraryRepo.getByUserId(ctx.state.user.id));
+    };
 
     create = async (ctx) => {
-        try {
-            const payload = { ...ctx.request.body };
+        const payload = normalizePayload(ctx);
+        ctx.assert(payload.title, 400, 'Tiêu đề lộ trình là bắt buộc');
+        payload.user_id = ctx.state.user.id;
+        created(ctx, await itineraryRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
+    };
 
-            if (payload.itinerary_days && typeof payload.itinerary_days === 'string') {
-                payload.itinerary_days = JSON.parse(payload.itinerary_days);
-            }
-            if (payload.itinerary_provinces && typeof payload.itinerary_provinces === 'string') {
-                payload.itinerary_provinces = JSON.parse(payload.itinerary_provinces);
-            }
-            if (payload.estimated_cost) {
-                payload.estimated_cost = Number(payload.estimated_cost);
-            }
-            if (payload.nights) payload.nights = Number(payload.nights);
-            if (payload.days) payload.days = Number(payload.days);
-            if (payload.share !== undefined) {
-                payload.share = payload.share === 'true';
-            }
-            console.log(JSON.stringify(payload, null, 2));
-            const data = await this.repository.create(payload);
-
-            ctx.status = 201;
-            ctx.body = { success: true, message: `Tạo mới ${this.itemName} thành công`, data };
-        } catch (error) {
-            console.error("Lỗi tạo lộ trình:", error);
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi tạo ${this.itemName}`, error_detail: error.message };
-        }
-    }
     update = async (ctx) => {
-        try {
-            if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
-                ctx.status = 400;
-                ctx.body = { success: false, message: "Dữ liệu cập nhật không được để trống" };
-                return;
-            }
+        const { id } = ctx.params;
+        await this.assertOwner(ctx, id);
+        const payload = normalizePayload(ctx);
+        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
+        ok(ctx, await itineraryRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+    };
 
-            const payload = { ...ctx.request.body };
-            const id = ctx.params.id || payload.id;
-            if (!id) {
-                ctx.status = 400;
-                ctx.body = { success: false, message: "Thiếu ID để cập nhật lộ trình" };
-                return;
-            }
-            delete payload.id;
-            if (Object.keys(payload).length === 0) {
-                ctx.status = 400;
-                ctx.body = { success: false, message: "Không có trường dữ liệu nào được thay đổi" };
-                return;
-            }
-            try {
-                if (payload.itinerary_days && typeof payload.itinerary_days === 'string') {
-                    payload.itinerary_days = JSON.parse(payload.itinerary_days);
-                }
-                if (payload.itinerary_provinces && typeof payload.itinerary_provinces === 'string') {
-                    payload.itinerary_provinces = JSON.parse(payload.itinerary_provinces);
-                }
-            } catch (e) {
-                ctx.status = 400;
-                ctx.body = { success: false, message: "Định dạng JSON của lộ trình không hợp lệ" };
-                return;
-            }
-            if (payload.estimated_cost !== undefined) payload.estimated_cost = Number(payload.estimated_cost);
-            if (payload.nights !== undefined) payload.nights = Number(payload.nights);
-            if (payload.days !== undefined) payload.days = Number(payload.days);
-
-            if (payload.share !== undefined) {
-                payload.share = payload.share === 'true' || payload.share === true;
-            }
-
-            console.log("Payload chuẩn bị update:", JSON.stringify({ id, ...payload }, null, 2));
-            const data = await this.repository.update(id, payload);
-
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Cập nhật ${this.itemName} thành công`, data };
-
-        } catch (error) {
-            console.error("Lỗi cập nhật lộ trình:", error);
-            ctx.status = 500;
-            ctx.body = {
-                success: false,
-                message: `Lỗi hệ thống khi cập nhật ${this.itemName}`,
-                error_detail: error.message
-            };
-        }
-    }
-    getAll = async (ctx) => {
-        try {
-            const { trending, is_public } = ctx.query;
-            if (trending === 'weekly') {
-                const { data, error } = await this.repository.getTrending();
-                if (error) throw error;
-                ctx.status = 200;
-                ctx.body = { success: true, data: data };
-                return;
-            }
-            const { data, error } = await this.repository.getAll(is_public);
-            if (error) throw error;
-            ctx.status = 200;
-            ctx.body = { success: true, data: data };
-
-        } catch (error) {
-            console.error("Lỗi khi lấy lộ trình:", error);
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi lấy danh sách lộ trình`, error_detail: error.message };
-        }
-    }
-    getItinerariesByMe = async (ctx) => {
-        try {
-            const userId = ctx.state.user.id;
-            const { data, error } = await this.repository.getItinerariesByUserId(userId);
-            if (error) throw error;
-            ctx.status = 200;
-            ctx.body = { success: true, data: data, userId: userId };
-        } catch (error) {
-            console.error("Lỗi khi lấy lộ trình của người dùng:", error);
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi lấy danh sách lộ trình của người dùng`, error_detail: error.message };
-        }
-    }
+    delete = async (ctx) => {
+        const { id } = ctx.params;
+        await this.assertOwner(ctx, id);
+        ok(ctx, await itineraryRepo.delete(id), `Xóa ${this.itemName} thành công`);
+    };
 }
 
 const itineraryController = new ItineraryController();
@@ -135,4 +85,4 @@ export const getItineraryById = itineraryController.getById;
 export const createItinerary = itineraryController.create;
 export const updateItinerary = itineraryController.update;
 export const deleteItinerary = itineraryController.delete;
-export const getItinerariesByMe = itineraryController.getItinerariesByMe;
+export const getItinerariesByMe = itineraryController.getMine;

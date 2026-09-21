@@ -1,7 +1,6 @@
 import { Outfit } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
-import "flatpickr/dist/flatpickr.css";
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { Toaster } from 'sonner';

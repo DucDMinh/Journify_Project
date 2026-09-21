@@ -102,7 +102,7 @@ export const UserBanner = ({ currentUser, searchQuery, setSearchQuery, setIsAiMo
 
                                 {/* 3. Nút phụ chuyển thành Đăng nhập / Tham gia hoặc mở Modal báo yêu cầu đăng nhập */}
                                 <Link
-                                    href="/signin" // Đổi thành link trang đăng nhập của bạn (hoặc onClick mở Modal Login)
+                                    href="/auth/signin"
                                     className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-main)] font-bold hover:bg-[var(--bg-paper)] transition"
                                 >
                                     <Sparkles className="w-5 h-5 text-[var(--accent-gold)]" /> Đăng nhập để tạo AI

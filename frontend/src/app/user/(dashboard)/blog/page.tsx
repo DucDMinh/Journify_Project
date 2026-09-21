@@ -28,11 +28,12 @@ export default function BlogPage() {
     const { user: currentUser } = useAuth();
     const fetchBlog = async () => {
         try {
-            const { data, response } = await api.get('/blogs');
+            const { data, response } = await api.get<Blog[]>('/blogs');
             if (!response.ok) {
                 toast.error(`${data.message}`)
+                return;
             }
-            setPosts(data.data)
+            setPosts(data.data ?? [])
         } catch (error) {
             toast.error(`Co loi xay ra: ${error}`)
         }

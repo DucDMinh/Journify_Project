@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 import { Itinerary } from "@/interface";
-import { MyItineraryCard } from "@/components/user/MyItinerary/MyItineraryCard";
+import { MyItineraryCard } from "@/components/user/my-itinerary/MyItineraryCard";
 import { api } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { TripDetailModal1 } from "@/components/modals/user/TripDetailModal1";
@@ -38,11 +38,11 @@ export default function MyItineraryPage() {
     const handleDelete = async (id: string) => {
         const toastId = toast.loading("Đang xóa...");
         try {
-            const { data, response } = await api.delete(`/itineraries/${id}`);
+            const { data, response } = await api.delete<Itinerary>(`/itineraries/${id}`);
             if (!response.ok) {
-                throw new Error("Failed to delete itinerary");
+                throw new Error(data.message || "Xóa lộ trình thất bại");
             }
-            toast.success(`Xóa "${data.data.title}" thành công`, { id: toastId });
+            toast.success(`Xóa "${data.data?.title ?? ""}" thành công`, { id: toastId });
             setItineraries(prev => prev.filter(iti => iti.id !== id));
         } catch (err: any) {
             console.error("Lỗi xóa:", err);
@@ -54,15 +54,11 @@ export default function MyItineraryPage() {
     useEffect(() => {
         const fetchMyItineraries = async () => {
             try {
-                const { data, response } = await api.get('/itineraries/me');
+                const { data, response } = await api.get<Itinerary[]>('/itineraries/me');
                 if (!response.ok) {
-                    throw new Error("Failed to fetch itineraries");
+                    throw new Error(data.message || "Không tải được lộ trình của bạn");
                 }
-                if (currentUser && data.userId !== currentUser.id) {
-                    toast.error("Bạn không có quyền truy cập vào lộ trình này");
-                }
-                const my_itineraries: Itinerary[] = data?.data?.data || data?.data || data || [];
-                setItineraries(my_itineraries);
+                setItineraries(data.data ?? []);
             } catch (error) {
                 console.error("Error fetching itineraries:", error);
             }

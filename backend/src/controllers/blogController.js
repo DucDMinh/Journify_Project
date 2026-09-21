@@ -1,141 +1,75 @@
 import { BaseController } from './baseController.js';
-import { blogRepo } from '../repositories/blogRepository.js'
+import { blogRepo } from '../repositories/blogRepository.js';
 import { uploadImageToStorage, deleteImageFromStorage } from '../helpers/uploadHelper.js';
+import { isOwnerOrAdmin } from '../middleware/auth.middleware.js';
+import { pick } from '../helpers/object.js';
+import { ok, created } from '../helpers/response.js';
+
+const EDITABLE_FIELDS = ['content', 'location', 'emotion'];
+const STORAGE_FOLDER = 'blogs';
 
 class BlogController extends BaseController {
     constructor() {
-        super(blogRepo, "Blogs");
+        super(blogRepo, 'Bài viết');
     }
+
+    async findOwnedOr404(ctx, id) {
+        const blog = await this.findOr404(id);
+        ctx.assert(isOwnerOrAdmin(ctx.state.user, blog.user_id), 403, 'Bạn không có quyền thao tác trên bài viết này');
+        return blog;
+    }
+
     getAll = async (ctx) => {
-        try {
-            const user_id = ctx.state.user.id;
-            const { data, error } = await this.repository.getAll(user_id);
-            if (error) throw new Error(error);
-            ctx.status = 200;
-            ctx.body = {
-                success: true,
-                data: data
-            }
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống`, error_detail: error.message };
-        }
-    }
+        ok(ctx, await blogRepo.getAll(ctx.state.user?.id ?? null));
+    };
+
     create = async (ctx) => {
-        try {
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
-            if (file) {
-                const imageUrl = await uploadImageToStorage(file, 'blogs');
-                payload.blog_image = imageUrl;
-            }
-            const data = await this.repository.create(payload);
-            ctx.status = 201;
-            ctx.body = { success: true, message: `Tạo mới ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi tạo ${this.itemName}`, error_detail: error.message };
-        }
-    }
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        ctx.assert(payload.content?.trim(), 400, 'Nội dung bài viết không được để trống');
+        payload.user_id = ctx.state.user.id;
+        if (ctx.request.file) payload.blog_image = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+        created(ctx, await blogRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
+    };
+
     update = async (ctx) => {
-        try {
-            const id = ctx.params.id;
-            const payload = { ...ctx.request.body };
-            const file = ctx.request.file;
-
-            const oldBlog = await this.repository.getById(id);
-            if (!oldBlog) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để cập nhật!` };
-                return;
-            }
-
-            if (file) {
-                payload.blog_image = await uploadImageToStorage(file);
-
-                if (oldBlog.blog_image) {
-                    await deleteImageFromStorage(oldBlog.blog_image);
-                }
-            }
-
-            const data = await this.repository.update(id, payload);
-
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Cập nhật ${this.itemName} thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi cập nhật ${this.itemName}`, error_detail: error.message };
+        const { id } = ctx.params;
+        const existing = await this.findOwnedOr404(ctx, id);
+        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        if (ctx.request.file) {
+            payload.blog_image = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+            await deleteImageFromStorage(existing.blog_image);
         }
-    }
+        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
+        ok(ctx, await blogRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+    };
+
     delete = async (ctx) => {
-        try {
-            const id = ctx.params.id;
+        const { id } = ctx.params;
+        const existing = await this.findOwnedOr404(ctx, id);
+        const deleted = await blogRepo.delete(id);
+        await deleteImageFromStorage(existing.blog_image);
+        ok(ctx, deleted, `Xóa ${this.itemName} thành công`);
+    };
 
-            const oldBlog = await this.repository.getById(id);
-            if (!oldBlog) {
-                ctx.status = 404;
-                ctx.body = { success: false, message: `Không tìm thấy ${this.itemName} để xóa!` };
-                return;
-            }
+    like = async (ctx) => {
+        await this.findOr404(ctx.params.id);
+        await blogRepo.like(ctx.params.id, ctx.state.user.id);
+        ok(ctx, null, 'Đã thích bài viết');
+    };
 
-            const data = await this.repository.delete(id);
-
-            if (data && oldBlog.blog_image) {
-                await deleteImageFromStorage(oldBlog.blog_image);
-            }
-
-            ctx.status = 200;
-            ctx.body = { success: true, message: `Xóa ${this.itemName} và dọn dẹp ảnh thành công`, data };
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = { success: false, message: `Lỗi hệ thống khi xóa ${this.itemName}`, error_detail: error.message };
-        }
-    }
-    likeBlog = async (ctx) => {
-        try {
-            const blog_id = ctx.params.id;
-            const user_id = ctx.state.user.id;
-            const payload = {
-                p_user_id: user_id,
-                p_blog_id: blog_id
-            }
-            const data = await this.repository.likeBlog(payload)
-            ctx.status = 201;
-            ctx.body = {
-                success: true
-            }
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = {
-                success: false,
-                message: `${error}`
-            }
-        }
-    }
-    unlikeBlog = async (ctx) => {
-        try {
-            const blog_id = ctx.params.id;
-            const user_id = ctx.state.user.id;
-            await this.repository.unlikeBlog(blog_id, user_id);
-            ctx.status = 201;
-            ctx.body = {
-                success: true
-            }
-        } catch (error) {
-            ctx.status = 500;
-            ctx.body = {
-                success: false,
-                message: error
-            }
-        }
-    }
+    unlike = async (ctx) => {
+        await this.findOr404(ctx.params.id);
+        await blogRepo.unlike(ctx.params.id, ctx.state.user.id);
+        ok(ctx, null, 'Đã bỏ thích bài viết');
+    };
 }
 
 const blogController = new BlogController();
+
 export const getAllBlogs = blogController.getAll;
-export const createBlog = blogController.create;
-export const deleteBlog = blogController.delete;
-export const updateBlog = blogController.update;
 export const getBlogById = blogController.getById;
-export const likeBlog = blogController.likeBlog;
-export const unlikeBlog = blogController.unlikeBlog;
+export const createBlog = blogController.create;
+export const updateBlog = blogController.update;
+export const deleteBlog = blogController.delete;
+export const likeBlog = blogController.like;
+export const unlikeBlog = blogController.unlike;

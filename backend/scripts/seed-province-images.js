@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
+import { supabase } from '../src/config/supabaseClient.js';
 
-// Thay bằng thông tin của bạn
-const supabaseUrl = 'https://olyoukmspibiafejrezj.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9seW91a21zcGliaWFmZWpyZXpqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjI1ODI5NCwiZXhwIjoyMDk3ODM0Mjk0fQ.LU2dTa-pe3CuHo3EZMsESC87xkx2NnECXlK3_V96siQ'; // Dùng role key hoặc anon key có quyền update
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Script chạy một lần: lấy ảnh đại diện tỉnh từ Wikipedia và đẩy lên Supabase Storage.
+// Chạy: node scripts/seed-province-images.js (đọc SUPABASE_URL / SUPABASE_SERVICE_KEY từ .env)
 
 // 1. Đổi tên bucket thành 'image'
 const BUCKET_NAME = 'image';

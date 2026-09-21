@@ -2,6 +2,7 @@ import { MapContainer, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import RoutingMachine from "./RoutingMachine";
 import { Itinerary_days } from "@/interface";
+import { MAP_TILE_ATTRIBUTION, MAP_TILE_SUBDOMAINS, MAP_TILE_URL } from "@/utils/map";
 
 interface RouteMapViewerProps {
     days: Itinerary_days[] | null;
@@ -36,7 +37,7 @@ export default function RouteMapViewer({ days }: RouteMapViewerProps) {
 
     return (
         <MapContainer center={[points[0].lat, points[0].lng]} zoom={10} className="h-full w-full">
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer attribution={MAP_TILE_ATTRIBUTION} url={MAP_TILE_URL} subdomains={MAP_TILE_SUBDOMAINS} />
             <RoutingMachine points={points} />
         </MapContainer>
     );

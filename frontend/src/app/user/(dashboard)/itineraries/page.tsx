@@ -10,7 +10,7 @@ import {
     SlidersHorizontal, ChevronRight, Heart,
     TrendingUp, Compass, UserCircle
 } from "lucide-react";
-import { Itinerary } from "@/interface";
+import { Itinerary, asUserRef } from "@/interface";
 import { toast } from 'sonner';
 import { api } from "@/lib/apiClient"; // Nhớ import hàm api của bạn
 
@@ -40,9 +40,9 @@ export default function ExploreItinerariesPage() {
     const fetchItineraries = async () => {
         setIsLoading(true);
         try {
-            const { data, response } = await api.get('/itineraries');
+            const { data, response } = await api.get<Itinerary[]>('/itineraries?is_public=true');
             if (!response.ok) throw new Error(data.message || "Lỗi khi lấy thông tin lộ trình!");
-            setItineraries(data?.data || data?.data?.data || []);
+            setItineraries(data.data ?? []);
         } catch (error: any) {
             toast.error(`Không thể tải dữ liệu: ${error.message}`);
         } finally {
@@ -252,7 +252,8 @@ export default function ExploreItinerariesPage() {
                                             : "Chưa xác định điểm đến";
 
                                         // Bóc tách tác giả
-                                        const authorName = trip.user_id?.name || "Người dùng ẩn danh";
+                                        const author = asUserRef(trip.user_id);
+                                        const authorName = author?.name || "Người dùng ẩn danh";
 
                                         return (
                                             <motion.div
@@ -305,8 +306,8 @@ export default function ExploreItinerariesPage() {
 
                                                         {/* Author Info */}
                                                         <div className="flex items-center gap-3">
-                                                            {trip.user_id?.avatar ? (
-                                                                <img src={trip.user_id.avatar} alt="Author" className="w-8 h-8 rounded-full object-cover border border-[var(--border-color)]" />
+                                                            {author?.avatar ? (
+                                                                <img src={author.avatar} alt="Author" className="w-8 h-8 rounded-full object-cover border border-[var(--border-color)]" />
                                                             ) : (
                                                                 <UserCircle className="w-8 h-8 text-[var(--text-muted)]" />
                                                             )}

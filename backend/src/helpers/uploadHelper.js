@@ -1,59 +1,33 @@
+import { randomUUID } from 'node:crypto';
 import { supabase } from '../config/supabaseClient.js';
+import { HttpError } from './httpError.js';
 
-export const uploadImageToStorage = async (file, name) => {
-    try {
-        if (!file || !file.buffer) {
-            throw new Error("Không tìm thấy dữ liệu file hợp lệ!");
-        }
+const BUCKET = 'image';
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
-        const fileExtension = file.originalname.split('.').pop();
-        const uniqueFileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.${fileExtension}`;
-        const filePath = `${name}/${uniqueFileName}`;
-        const cleanBuffer = Buffer.from(file.buffer);
+export const uploadImageToStorage = async (file, folder) => {
+    if (!file?.buffer) throw new HttpError(400, 'Không tìm thấy dữ liệu file hợp lệ!');
+    if (!folder) throw new Error('uploadImageToStorage: thiếu tên thư mục');
+    if (!ALLOWED_MIME.has(file.mimetype)) throw new HttpError(400, 'Chỉ chấp nhận ảnh JPEG, PNG, WEBP hoặc GIF');
+    if (file.size > MAX_SIZE_BYTES) throw new HttpError(400, 'Ảnh không được vượt quá 5MB');
 
-        const { data, error } = await supabase.storage
-            .from('image')
-            .upload(filePath, cleanBuffer, {
-                contentType: file.mimetype,
-                duplex: 'half',
-                upsert: false
-            });
+    const extension = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
+    const filePath = `${folder}/${Date.now()}-${randomUUID()}.${extension}`;
 
-        if (error) {
-            console.error("Lỗi từ Supabase Storage:", error.message);
-            throw error;
-        }
+    const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(filePath, Buffer.from(file.buffer), { contentType: file.mimetype, upsert: false });
+    if (error) throw error;
 
-        const { data: publicUrlData } = supabase.storage
-            .from('image')
-            .getPublicUrl(filePath);
-
-        return publicUrlData.publicUrl;
-
-    } catch (error) {
-        console.error("Lỗi chi tiết trong hàm uploadImageToStorage:", error);
-        throw error;
-    }
+    return supabase.storage.from(BUCKET).getPublicUrl(filePath).data.publicUrl;
 };
 
 export const deleteImageFromStorage = async (imageUrl) => {
     if (!imageUrl) return;
+    const [, filePath] = imageUrl.split(`/${BUCKET}/`);
+    if (!filePath) return;
 
-    try {
-        const BUCKET_NAME = 'image';
-        const pathParts = imageUrl.split(`${BUCKET_NAME}/`);
-
-        if (pathParts.length === 2) {
-            const filePath = pathParts[1];
-            const { error } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-
-            if (error) {
-                console.error("Lỗi khi xóa ảnh trên Supabase:", error.message);
-            } else {
-                console.log("Đã dọn dẹp ảnh cũ trên Storage thành công!");
-            }
-        }
-    } catch (error) {
-        console.error("Lỗi ở hàm deleteImageFromStorage:", error);
-    }
+    const { error } = await supabase.storage.from(BUCKET).remove([filePath]);
+    if (error) console.error('Không xóa được ảnh cũ trên Storage:', error.message);
 };

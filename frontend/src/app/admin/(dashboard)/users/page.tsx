@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -29,9 +28,8 @@ export default function UserManagementPage() {
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
-            const { data } = await api.get(`/users?_t=${Date.now()}`);
-            const rawUsers = data?.data?.data || data?.data || data || [];
-            setUsers(rawUsers.filter((u: any) => u && typeof u.id !== "undefined"));
+            const { data } = await api.get<User[]>(`/users?_t=${Date.now()}`);
+            setUsers((data.data ?? []).filter((u) => u && typeof u.id !== "undefined"));
         } catch (error) {
             toast.error("Không thể tải danh sách người dùng");
         } finally {

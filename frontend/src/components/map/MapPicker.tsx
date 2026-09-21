@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import { MAP_TILE_ATTRIBUTION, MAP_TILE_SUBDOMAINS, MAP_TILE_URL, VIETNAM_CENTER } from "@/utils/map";
 
 const customIcon = new L.Icon({
     iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -53,14 +54,11 @@ export default function MapPicker({ lat, lng, onLocationSelect }: MapPickerProps
     return (
         <div className="h-full w-full bg-gray-100">
             <MapContainer
-                center={[16.047079, 108.20623]}
+                center={VIETNAM_CENTER}
                 zoom={6}
                 style={{ height: "100%", width: "100%" }}
             >
-                <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
+                <TileLayer attribution={MAP_TILE_ATTRIBUTION} url={MAP_TILE_URL} subdomains={MAP_TILE_SUBDOMAINS} />
 
                 <MapUpdater lat={lat} lng={lng} setPosition={setPosition} />
 

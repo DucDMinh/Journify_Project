@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Itinerary } from "@/interface";
+import { AiItineraryResult, Itinerary } from "@/interface";
 import { AnimatePresence, motion } from "framer-motion";
 import { CompassIcon, Send, Sparkles, X, Lock, Crown } from "lucide-react";
 import { useState } from "react";
@@ -62,10 +62,9 @@ export function AiPlannerModal({
 
         try {
             const enrichedPrompt = `Đi ${prompt.trim()}. Phong cách: ${style}. Ngân sách: khoảng ${budgetAmount.toLocaleString('vi-VN')} VNĐ.`;
-            const { response, data } = await api.post('/ai/planner', { prompt: enrichedPrompt, days_count: days });
+            const { response, data } = await api.post<AiItineraryResult>('/ai/planner', { prompt: enrichedPrompt, days_count: days });
             clearInterval(interval);
-            if (!response.ok || !data.success) {
-                localStorage.setItem("userData", JSON.stringify(data.user))
+            if (!response.ok || !data.success || !data.data) {
                 onClose()
                 throw new Error(data.message || "Có lỗi xảy ra khi tạo lộ trình AI");
             }

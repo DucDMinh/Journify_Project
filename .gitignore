@@ -4,10 +4,11 @@
 node_modules/
 /.pnpm-store
 .yarn/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-cypress/
+
+# Kết quả chạy Cypress (spec trong cypress/e2e vẫn được commit)
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
 
 # ==============================================================================
 # NEXT.JS (Frontend build & cache)
@@ -20,8 +21,8 @@ build/
 # ==============================================================================
 # KOAJS & SERVER (Backend build & logs)
 # ==============================================================================
-dist/
-lib/
+backend/dist/
+backend/lib/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -50,6 +51,7 @@ yarn-error.log*
 .supabase/functions/.env
 .supabase/db
 .supabase/storage
+**/supabase/.temp/
 
 # KHÔNG ignore file 'supabase/config.toml' và các file migrations vì 
 # chúng cần thiết để đồng bộ cấu hình database giữa các thành viên.
