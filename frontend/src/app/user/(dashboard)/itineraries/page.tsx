@@ -3,7 +3,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Search, MapPin, Wallet,
@@ -23,10 +24,19 @@ const PRICE_RANGES = [
 ];
 
 export default function ExploreItinerariesPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-[var(--bg-paper)]" />}>
+            <ExploreItinerariesContent />
+        </Suspense>
+    );
+}
+
+function ExploreItinerariesContent() {
+    const searchParams = useSearchParams();
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
     const [priceRange, setPriceRange] = useState("all");
-    const [selectedProvince, setSelectedProvince] = useState("all"); // State mới cho tỉnh thành
+    const [selectedProvince, setSelectedProvince] = useState(searchParams.get("province") || "all");
     const [savedTrips, setSavedTrips] = useState<string[]>([]);
     const [itineraries, setItineraries] = useState<Itinerary[]>([]);
     const [isLoading, setIsLoading] = useState(true);

@@ -9,12 +9,13 @@ import paymentRoutes from './payment.routes.js';
 import orderRoutes from './order.routes.js';
 import blogRoutes from './blog.routes.js';
 import mapRoutes from './map.routes.js';
+import statsRoutes from './stats.routes.js';
 
 const router = new Router();
 
 for (const routes of [
     authRoutes, userRoutes, provinceRoutes, locationRoutes, itineraryRoutes,
-    blogRoutes, aiRoutes, paymentRoutes, orderRoutes, mapRoutes,
+    blogRoutes, aiRoutes, paymentRoutes, orderRoutes, mapRoutes, statsRoutes,
 ]) {
     router.use(routes.routes(), routes.allowedMethods());
 }

@@ -2,19 +2,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-    Sparkles,
-    ChevronRight,
-    Clock,
-    X,
-    Award,
-    Edit3,
-} from "lucide-react";
+import { Sparkles, X, Award } from "lucide-react";
 import { Toaster, toast } from 'sonner';
 import confetti from "canvas-confetti";
 import { Itinerary, Location, User } from "@/interface";
@@ -27,38 +19,12 @@ import { TrendingItinerary } from "@/components/user/HomePage/TrendingItinerary"
 import { TripDetailModal2 } from "@/components/modals/user/TripDetailModal2";
 import { RegionExplore } from "@/components/user/HomePage/RegionExplore";
 import { WishlistPreview } from "@/components/user/HomePage/WishlistPreview";
+import { TravelTips } from "@/components/user/HomePage/TravelTips";
 import { useDashboard } from "@/app/user/(dashboard)/layout";
 import { useRouter } from "next/navigation";
 import { PremiumModal } from "@/components/payment/PremiumModal";
 import { AiPlannerModal } from "@/components/modals/user/AiPlannerModal";
 
-interface BlogTip {
-    title: string;
-    image: string;
-    tag: string;
-    readTime: string;
-}
-
-const BLOG_TIPS: BlogTip[] = [
-    {
-        title: "Cẩm nang du lịch Phú Quốc tự túc 2026",
-        image: "https://th.bing.com/th/id/OIP.MjQAAJKlLLdOlutUnQ2-3gHaDX?w=340&h=158&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3",
-        tag: "Biển đảo",
-        readTime: "5 phút",
-    },
-    {
-        title: "8 quán cà phê check-in đẹp nhất Đà Lạt",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?q=80&w=600&auto=format&fit=crop",
-        tag: "Sống ảo",
-        readTime: "4 phút",
-    },
-    {
-        title: "Kinh nghiệm trekking Tà Xùa mùa lúa chín",
-        image: "https://th.bing.com/th/id/OIP.wM-U8STHJsovy78owSGWXwHaD4?w=344&h=181&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3",
-        tag: "Trekking",
-        readTime: "7 phút",
-    },
-];
 function triggerConfetti() {
     confetti({
         particleCount: 50,
@@ -223,47 +189,7 @@ export default function JournifyUserDashboard() {
                             />
                         </div>
                         <RegionExplore />
-                        <section>
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <h2 className="font-display text-2xl font-bold flex items-center gap-2">
-                                        <Edit3 className="w-6 h-6 text-purple-500" /> Bài viết & Mẹo du lịch
-                                    </h2>
-                                    <p className="text-sm text-[var(--text-muted)] mt-1">Cẩm nang bỏ túi cho chuyến đi của bạn</p>
-                                </div>
-                                <button
-                                    onClick={() => notify("Chuyên mục Blog đang được xây dựng", "📝")}
-                                    className="text-sm font-bold text-[var(--accent-primary)] hover:underline flex items-center gap-1"
-                                >
-                                    Xem thêm <ChevronRight className="w-4 h-4" />
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {BLOG_TIPS.map((blog, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer group"
-                                        onClick={() => notify(`Đọc bài: ${blog.title}`, "📖")}
-                                    >
-                                        <div className="relative h-44 overflow-hidden">
-                                            <img src={blog.image} alt={blog.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                            <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full">
-                                                {blog.tag}
-                                            </span>
-                                        </div>
-                                        <div className="p-4">
-                                            <h4 className="font-bold text-base leading-snug line-clamp-2">{blog.title}</h4>
-                                            <div className="flex items-center justify-between mt-3">
-                                                <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-                                                    <Clock className="w-3.5 h-3.5" /> {blog.readTime} đọc
-                                                </span>
-                                                <ChevronRight className="w-4 h-4 text-[var(--accent-primary)]" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
+                        <TravelTips />
 
                         {/* Thống kê cá nhân & Wishlist nhỏ */}
                         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -51,6 +51,27 @@ class BlogController extends BaseController {
         ok(ctx, deleted, `Xóa ${this.itemName} thành công`);
     };
 
+    getComments = async (ctx) => {
+        await this.findOr404(ctx.params.id);
+        ok(ctx, await blogRepo.getComments(ctx.params.id));
+    };
+
+    addComment = async (ctx) => {
+        await this.findOr404(ctx.params.id);
+        const content = String(ctx.request.body?.content ?? '').trim();
+        ctx.assert(content, 400, 'Nội dung bình luận không được để trống');
+        ctx.assert(content.length <= 1000, 400, 'Bình luận tối đa 1000 ký tự');
+        created(ctx, await blogRepo.addComment({ blogId: ctx.params.id, userId: ctx.state.user.id, content }), 'Đã bình luận');
+    };
+
+    deleteComment = async (ctx) => {
+        const comment = await blogRepo.getComment(ctx.params.commentId);
+        ctx.assert(comment && comment.blog_id === ctx.params.id, 404, 'Không tìm thấy bình luận');
+        ctx.assert(isOwnerOrAdmin(ctx.state.user, comment.user_id), 403, 'Bạn không có quyền xóa bình luận này');
+        await blogRepo.deleteComment(comment.id, comment.blog_id);
+        ok(ctx, null, 'Đã xóa bình luận');
+    };
+
     like = async (ctx) => {
         await this.findOr404(ctx.params.id);
         await blogRepo.like(ctx.params.id, ctx.state.user.id);
@@ -73,3 +94,6 @@ export const updateBlog = blogController.update;
 export const deleteBlog = blogController.delete;
 export const likeBlog = blogController.like;
 export const unlikeBlog = blogController.unlike;
+export const getBlogComments = blogController.getComments;
+export const addBlogComment = blogController.addComment;
+export const deleteBlogComment = blogController.deleteComment;

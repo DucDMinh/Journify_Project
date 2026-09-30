@@ -66,13 +66,18 @@ Webhook PayOS cần URL công khai trỏ tới `POST /payments/webhook` (dùng n
 | GET | `/itineraries` | public/admin | Public chỉ thấy `share=true`; admin thấy tất cả; `?trending=weekly` |
 | GET | `/itineraries/me` | user | Lộ trình của tôi |
 | POST/PATCH/DELETE | `/itineraries` | chủ sở hữu hoặc admin | JSON; `user_id` lấy từ token |
-| GET/POST/PATCH/DELETE | `/blogs`, `/blogs/:id/like`, `/unlike` | user (sửa/xóa: chủ sở hữu) | |
+| GET | `/blogs`, `/blogs/:id`, `/blogs/:id/comments` | public | Đăng nhập thì có thêm `is_liked` |
+| POST/PATCH/DELETE | `/blogs`, `/blogs/:id/like`, `/unlike`, `/blogs/:id/comments` | user (sửa/xóa: chủ sở hữu) | Xóa bình luận: `DELETE /blogs/:id/comments/:commentId` |
+| GET | `/provinces/regions` | public | 4 vùng miền → tỉnh, số địa điểm, số lộ trình công khai |
+| GET | `/stats/community` | public | Bảng vinh danh, địa điểm được lưu nhiều, lộ trình mới chia sẻ |
 | POST | `/ai/planner` | premium | `{ prompt, days_count }` |
 | POST | `/payments/premium` | user | `{ planId: 1\|3\|6\|12, returnUrl }` – giá do server quyết định |
 | POST | `/payments/webhook` | PayOS | Xác thực chữ ký, idempotent |
 | GET | `/orders` | admin | PATCH `/orders/:id` – user chỉ được hủy đơn PENDING của mình |
 | GET | `/users` | admin | `/users/:id` – chính chủ hoặc admin |
+| GET | `/map/geocode?q=`, `/map/reverse?lat&lng` | user | Tìm/đảo tọa độ qua Photon (dự phòng Nominatim) |
 | GET | `/map/extract`, `/map/province-from-coords` | admin | Chỉ chấp nhận link Google Maps |
+| GET | `/stats/overview?months=6` | admin | Số liệu dashboard: tổng quan, theo tháng, top tỉnh/địa điểm, đơn hàng |
 
 ## Kiểm thử
 

@@ -3,6 +3,7 @@ import { BaseController } from './baseController.js';
 import { uploadImageToStorage, deleteImageFromStorage } from '../helpers/uploadHelper.js';
 import { pick } from '../helpers/object.js';
 import { ok, created } from '../helpers/response.js';
+import { REGIONS, regionKeyOf } from '../config/regions.js';
 
 const EDITABLE_FIELDS = ['name', 'description', 'best_time_to_visit', 'height', 'image_url'];
 const STORAGE_FOLDER = 'provinces';
@@ -11,6 +12,36 @@ class ProvinceController extends BaseController {
     constructor() {
         super(provinceRepo, 'Tỉnh thành');
     }
+
+    getRegions = async (ctx) => {
+        const [provinces, locationCounts, itineraryCounts] = await Promise.all([
+            provinceRepo.getAll(),
+            provinceRepo.countLocationsByProvince(),
+            provinceRepo.countPublicItinerariesByProvince(),
+        ]);
+        const regions = REGIONS.map((region) => ({ key: region.key, name: region.name, tagline: region.tagline, provinces: [] }));
+        const byKey = new Map(regions.map((r) => [r.key, r]));
+        for (const p of provinces) {
+            const region = byKey.get(regionKeyOf(p.name));
+            if (!region) continue;
+            region.provinces.push({
+                id: p.id,
+                name: p.name,
+                image_url: p.image_url ?? null,
+                description: p.description ?? null,
+                best_time_to_visit: p.best_time_to_visit ?? null,
+                locations: locationCounts.get(p.id) ?? 0,
+                itineraries: itineraryCounts.get(p.id) ?? 0,
+            });
+        }
+        for (const region of regions) {
+            region.provinces.sort((a, b) => b.locations - a.locations || a.name.localeCompare(b.name, 'vi'));
+            region.locations = region.provinces.reduce((s, p) => s + p.locations, 0);
+            region.itineraries = region.provinces.reduce((s, p) => s + p.itineraries, 0);
+            region.cover = region.provinces.find((p) => p.image_url)?.image_url ?? null;
+        }
+        ok(ctx, regions);
+    };
 
     create = async (ctx) => {
         const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
@@ -43,6 +74,7 @@ class ProvinceController extends BaseController {
 const provinceController = new ProvinceController();
 
 export const getAllProvinces = provinceController.getAll;
+export const getRegions = provinceController.getRegions;
 export const getProvinceById = provinceController.getById;
 export const createProvince = provinceController.create;
 export const updateProvince = provinceController.update;

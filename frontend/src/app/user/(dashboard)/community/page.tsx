@@ -1,259 +1,346 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bookmark, Crown, Flame, Map, MapPin, PenSquare, Route, Search, Trophy, Users } from "lucide-react";
+import { toast } from "sonner";
+import { api } from "@/lib/apiClient";
+import { CommunityOverview, Itinerary } from "@/interface";
+import { useAuth } from "@/hooks/auth/AuthContext";
+import { useBlogFeed } from "@/hooks/user/useBlogFeed";
+import { PostCard } from "@/components/user/community/PostCard";
+import { CreatePostModal } from "@/components/modals/user/CreatePostModal";
+import { TripDetailModal2 } from "@/components/modals/user/TripDetailModal2";
+import { removeAccents } from "@/utils/text";
+import { timeAgo } from "@/utils/time";
 
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import {
-    Search, PenSquare, Map, HelpCircle, MapPin, Calendar, Users,
-    MessageCircle, Heart, Share2, ArrowBigUp, ArrowBigDown,
-    Trophy, Sparkles, ChevronRight, BookmarkPlus, MoreHorizontal
-} from "lucide-react";
-
-// --- MOCK DATA ---
 const TOPICS = [
-    { icon: "🌍", name: "Tất cả" }, { icon: "🎒", name: "Phượt xe máy" },
-    { icon: "🧘‍♀️", name: "Chữa lành" }, { icon: "🍜", name: "Food Tour" },
-    { icon: "🏕️", name: "Camping" }, { icon: "👶", name: "Du lịch gia đình" },
-    { icon: "🧑‍🤝‍🧑", name: "Cặp đôi" }, { icon: "🚶", name: "Solo Travel" }
+    { icon: "🌍", name: "Tất cả", match: () => true },
+    { icon: "🤩", name: "Hào hứng", match: (e: string) => e.includes("hao hung") },
+    { icon: "🥰", name: "Hạnh phúc", match: (e: string) => e.includes("hanh phuc") },
+    { icon: "😌", name: "Thư giãn", match: (e: string) => e.includes("thu gian") },
+    { icon: "🌟", name: "Tuyệt vời", match: (e: string) => e.includes("tuyet voi") },
+    { icon: "✈️", name: "Cuồng chân", match: (e: string) => e.includes("cuong chan") },
 ];
 
-const FEED_POSTS = [
-    {
-        id: 1, type: "itinerary", author: "Hải Phạm", avatar: "https://i.pravatar.cc/150?u=1",
-        title: "Food Tour Hải Phòng 2N1Đ chỉ với 800k", image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800",
-        content: "Cuối tuần vừa rồi mình vừa làm chuyến food tour đất Cảng, chia sẻ lại lộ trình siêu tiết kiệm cho anh em nhé...",
-        likes: 245, comments: 42, isSaved: false
-    },
-    {
-        id: 2, type: "qa", author: "Linh Tran", avatar: "https://i.pravatar.cc/150?u=2",
-        title: "Đi Sapa tháng 10 mùa này có lạnh lắm không mọi người?",
-        content: "Sắp tới nhóm mình định đi Sapa, có người già và trẻ nhỏ. Cần chuẩn bị áo khoác dày không ạ?",
-        upvotes: 89, comments: 15
-    },
-    {
-        id: 3, type: "review", author: "Hoàng Minh", avatar: "https://i.pravatar.cc/150?u=3", badge: "Chuyên gia Đà Lạt",
-        title: "Review Tiệm Cafe Mùa Hè - Góc nhỏ chill chill", image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=800",
-        content: "Quán nằm trong hẻm nhỏ, yên tĩnh, cafe trứng rất ngon. Chấm 9/10 nhé!", rating: 4.5,
-        likes: 120, comments: 8
-    },
-    {
-        id: 4, type: "checkin", author: "Trang Nhung", avatar: "https://i.pravatar.cc/150?u=4",
-        title: "Đang ở Hội An, có quán nước mót nào vắng không cả nhà? 🌸", image: "https://images.unsplash.com/photo-1557427161-4701a0fa2cbF?q=80&w=800",
-        likes: 56, comments: 12
-    }
-];
+type SortMode = "newest" | "popular";
 
-const BUDDIES = [
-    { id: 1, name: "Mai Anh", dest: "Đà Lạt", dates: "15/08 - 18/08", text: "Mình là nữ (2k), cần tìm 1 bạn nữ ghép phòng Homestay và đi cafe chụp ảnh chéo cho nhau. Đã lo xong vé." },
-    { id: 2, name: "Tuấn Hưng", dest: "Tà Xùa", dates: "Cuối tuần này", text: "Tuyển 2 xế cứng đi săn mây Tà Xùa thứ 7 này, nhóm đang có 4 người (2 nam 2 nữ)." }
-];
-
-const LEADERBOARD = [
-    { id: 1, name: "Tuấn Đạt", role: "Phượt thủ siêu cấp", points: 2540, avatar: "https://i.pravatar.cc/150?u=5" },
-    { id: 2, name: "Ngọc Diệp", role: "Food Reviewer", points: 1980, avatar: "https://i.pravatar.cc/150?u=6" },
-    { id: 3, name: "Hoàng Oanh", role: "Local Guide", points: 1520, avatar: "https://i.pravatar.cc/150?u=7" }
-];
+const formatVnd = (n: number) => `${new Intl.NumberFormat("vi-VN").format(n)} ₫`;
 
 export default function CommunityPage() {
+    const { user: currentUser } = useAuth();
+    const { posts, isLoading, reload, toggleLike, removePost, setCommentCount } = useBlogFeed();
+    const [overview, setOverview] = useState<CommunityOverview | null>(null);
     const [activeTopic, setActiveTopic] = useState("Tất cả");
+    const [query, setQuery] = useState("");
+    const [sort, setSort] = useState<SortMode>("newest");
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [activeTrip, setActiveTrip] = useState<Itinerary | null>(null);
+
+    useEffect(() => {
+        let ignore = false;
+        api.get<CommunityOverview>("/stats/community").then(({ response, data }) => {
+            if (!ignore && response.ok && data.data) setOverview(data.data);
+        });
+        return () => {
+            ignore = true;
+        };
+    }, []);
+
+    const visiblePosts = useMemo(() => {
+        const topic = TOPICS.find((t) => t.name === activeTopic) ?? TOPICS[0];
+        const q = removeAccents(query.trim());
+        const filtered = posts.filter((p) => {
+            const matchesTopic = topic.match(removeAccents(p.emotion ?? ""));
+            const haystack = removeAccents(`${p.content} ${p.location ?? ""} ${p.user_id?.name ?? ""}`);
+            return matchesTopic && (!q || haystack.includes(q));
+        });
+        return sort === "popular" ? [...filtered].sort((a, b) => b.likes + b.comments - (a.likes + a.comments)) : filtered;
+    }, [posts, activeTopic, query, sort]);
+
+    const openTripDetail = async (trip: Itinerary) => {
+        const { response, data } = await api.get<Itinerary>(`/itineraries/${trip.id}`);
+        if (!response.ok || !data.data) {
+            toast.error(data.message || "Không tải được lộ trình");
+            return;
+        }
+        setActiveTrip(data.data);
+    };
+
+    const cloneTrip = async (trip: Itinerary) => {
+        if (!currentUser) {
+            toast.error("Đăng nhập để lưu lộ trình");
+            return;
+        }
+        const toastId = toast.loading("Đang lưu lộ trình vào sổ tay...");
+        const { response, data } = await api.get<Itinerary>(`/itineraries/${trip.id}`);
+        if (!response.ok || !data.data) {
+            toast.error("Không tải được lộ trình", { id: toastId });
+            return;
+        }
+        const full = data.data;
+        const payload = {
+            title: `Bản sao - ${full.title}`,
+            summary: full.summary,
+            theme: full.theme,
+            start_date: full.start_date,
+            end_date: full.end_date,
+            days: full.days,
+            nights: full.nights,
+            estimated_cost: full.estimated_cost,
+            image_url: full.image_url,
+            share: false,
+            cloned_from_id: full.id,
+            itinerary_provinces: (full.itinerary_provinces ?? []).map((p) => ({ province_id: p.province_id ?? p.provinces?.id })),
+            itinerary_days: (full.itinerary_days ?? []).map((day) => ({
+                day_number: day.day_number,
+                title: day.title,
+                itinerary_locations: day.itinerary_locations.map((loc) => ({
+                    location_id: loc.location_id,
+                    location_name: loc.location_name,
+                    lat: loc.lat,
+                    lng: loc.lng,
+                    sequence_order: loc.sequence_order,
+                    start_time: loc.start_time,
+                    end_time: loc.end_time,
+                    cost: loc.cost,
+                    activity_note: loc.activity_note,
+                })),
+            })),
+        };
+        const res = await api.post("/itineraries", payload);
+        if (!res.response.ok) {
+            toast.error(res.data.message || "Không lưu được lộ trình", { id: toastId });
+            return;
+        }
+        toast.success(`Đã lưu "${full.title}" vào Lộ trình của tôi`, { id: toastId });
+    };
 
     return (
         <div className="min-h-screen bg-[var(--bg-paper)] pb-20">
-            <div className="relative bg-slate-900 overflow-hidden">
+            <div className="relative overflow-hidden bg-slate-900">
                 <div className="absolute inset-0">
-                    <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2000" alt="Community" className="w-full h-full object-cover opacity-40" />
+                    <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2000" alt="" className="h-full w-full object-cover opacity-40" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-paper)] via-slate-900/60 to-transparent" />
                 </div>
-
-                <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16 text-center">
-                    <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-4xl md:text-5xl font-display font-bold text-white mb-4 drop-shadow-md">
+                <div className="relative z-10 mx-auto max-w-7xl px-4 pb-16 pt-16 text-center sm:px-6 lg:px-8">
+                    <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="font-display mb-3 text-4xl font-bold text-white drop-shadow-md md:text-5xl">
                         Khám phá thế giới cùng nhau
                     </motion.h1>
-                    <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-gray-300 text-sm md:text-base mb-8 max-w-2xl mx-auto">
-                        Cộng đồng đam mê xê dịch. Nơi chia sẻ lịch trình, kết bạn đồng hành và giải đáp mọi thắc mắc trên từng chuyến đi.
-                    </motion.p>
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }} className="max-w-2xl mx-auto mb-10 relative group">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-gray-400 group-focus-within:text-[var(--accent-primary)] transition-colors" />
-                        </div>
-                        <input type="text" className="block w-full pl-12 pr-4 py-4 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:bg-slate-900/80 transition-all shadow-lg" placeholder="Tìm kiếm bài viết, thành viên, hashtag hoặc địa điểm..." />
-                    </motion.div>
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-wrap justify-center gap-4">
-                        <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--accent-primary)] text-white font-bold hover:shadow-lg hover:-translate-y-0.5 transition-all">
-                            <PenSquare className="w-4 h-4" /> Đăng bài chia sẻ
+                    <p className="mx-auto mb-6 max-w-2xl text-sm text-gray-300 md:text-base">
+                        {overview
+                            ? `${overview.totals.members} thành viên · ${overview.totals.posts} bài chia sẻ · ${overview.totals.publicItineraries} lộ trình công khai`
+                            : "Nơi chia sẻ lịch trình, kinh nghiệm và kết bạn đồng hành."}
+                    </p>
+                    <div className="relative mx-auto mb-8 max-w-2xl">
+                        <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            className="block w-full rounded-2xl border border-white/20 bg-white/10 py-4 pl-12 pr-4 text-white placeholder-gray-400 shadow-lg backdrop-blur-md transition-all focus:bg-slate-900/80 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]"
+                            placeholder="Tìm bài viết theo nội dung, địa điểm hoặc tên thành viên..."
+                        />
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-3">
+                        <button
+                            onClick={() => (currentUser ? setIsCreateOpen(true) : toast.error("Đăng nhập để đăng bài"))}
+                            className="flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-6 py-3 font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                        >
+                            <PenSquare className="h-4 w-4" /> Đăng bài chia sẻ
                         </button>
-                        <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold hover:bg-white/20 transition-all">
-                            <Map className="w-4 h-4" /> Lộ trình của tôi
-                        </button>
-                        <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold hover:bg-white/20 transition-all">
-                            <HelpCircle className="w-4 h-4" /> Đặt câu hỏi
-                        </button>
-                    </motion.div>
-                </div>
-            </div>
-            <div className="border-b border-[var(--border-color)] bg-[var(--bg-card) top-0 z-10 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex overflow-x-auto py-3 gap-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                        {TOPICS.map(topic => (
-                            <button
-                                key={topic.name}
-                                onClick={() => setActiveTopic(topic.name)}
-                                className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-colors ${activeTopic === topic.name ? 'bg-[var(--text-main)] text-[var(--bg-paper)]' : 'bg-[var(--bg-paper)] border border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-main)]'}`}
-                            >
-                                <span>{topic.icon}</span> {topic.name}
-                            </button>
-                        ))}
+                        <Link href="/itineraries" className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 py-3 font-bold text-white backdrop-blur-md transition-all hover:bg-white/20">
+                            <Map className="h-4 w-4" /> Lộ trình cộng đồng
+                        </Link>
+                        <Link href="/tips" className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 py-3 font-bold text-white backdrop-blur-md transition-all hover:bg-white/20">
+                            <Bookmark className="h-4 w-4" /> Cẩm nang
+                        </Link>
                     </div>
                 </div>
             </div>
 
-            {/* MAIN CONTENT GRID */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="border-b border-[var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+                <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-4 py-3 [scrollbar-width:none] sm:px-6 lg:px-8">
+                    {TOPICS.map((topic) => (
+                        <button
+                            key={topic.name}
+                            onClick={() => setActiveTopic(topic.name)}
+                            className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+                                activeTopic === topic.name
+                                    ? "bg-[var(--text-main)] text-[var(--bg-paper)]"
+                                    : "border border-[var(--border-color)] bg-[var(--bg-paper)] text-[var(--text-muted)] hover:border-[var(--text-main)]"
+                            }`}
+                        >
+                            <span>{topic.icon}</span> {topic.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-                {/* 🌟 2. BẢNG TIN CỘNG ĐỒNG (CỘT TRÁI - 8 Cột) */}
+            <div className="mx-auto mt-8 grid max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:px-8">
                 <div className="lg:col-span-8">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="font-display text-2xl font-bold">Bảng tin mới nhất</h2>
-                        <button className="text-sm font-bold text-[var(--accent-primary)] hover:underline">Sắp xếp: Phổ biến</button>
+                    <div className="mb-6 flex items-center justify-between">
+                        <h2 className="font-display text-2xl font-bold">Bảng tin</h2>
+                        <div className="flex rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] p-1 text-xs font-bold">
+                            {(["newest", "popular"] as SortMode[]).map((mode) => (
+                                <button
+                                    key={mode}
+                                    onClick={() => setSort(mode)}
+                                    className={`rounded-full px-3 py-1.5 transition-colors ${sort === mode ? "bg-[var(--accent-primary)] text-white" : "text-[var(--text-muted)]"}`}
+                                >
+                                    {mode === "newest" ? "Mới nhất" : "Phổ biến"}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* MASONRY LAYOUT */}
-                    <div className="columns-1 md:columns-2 gap-6 space-y-6">
-                        {FEED_POSTS.map((post) => (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                                key={post.id}
-                                className="break-inside-avoid bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                            >
-                                {/* Header Post */}
-                                <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <img src={post.avatar} alt={post.author} className="w-10 h-10 rounded-full object-cover border border-[var(--border-color)]" />
-                                        <div>
-                                            <p className="font-bold text-sm text-[var(--text-main)] flex items-center gap-1.5">
-                                                {post.author}
-                                                {post.badge && <span className="bg-yellow-100 text-yellow-700 text-[10px] px-2 py-0.5 rounded-full">{post.badge}</span>}
-                                            </p>
-                                            <p className="text-xs text-[var(--text-muted)]">2 giờ trước</p>
-                                        </div>
-                                    </div>
-                                    <button className="text-[var(--text-muted)] hover:text-[var(--text-main)]"><MoreHorizontal className="w-5 h-5" /></button>
-                                </div>
+                    {isLoading ? (
+                        <div className="space-y-6">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="h-64 animate-pulse rounded-3xl bg-[var(--border-color)]" />
+                            ))}
+                        </div>
+                    ) : visiblePosts.length === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-[var(--border-color)] bg-[var(--bg-card)] p-12 text-center">
+                            <PenSquare className="mx-auto mb-3 h-8 w-8 text-[var(--text-muted)]" />
+                            <p className="font-semibold text-[var(--text-main)]">Chưa có bài viết phù hợp</p>
+                            <p className="mt-1 text-sm text-[var(--text-muted)]">Hãy là người đầu tiên chia sẻ hành trình của bạn.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {visiblePosts.map((post) => (
+                                <PostCard
+                                    key={post.id}
+                                    post={post}
+                                    currentUser={currentUser}
+                                    onToggleLike={toggleLike}
+                                    onDelete={removePost}
+                                    onCommentCount={setCommentCount}
+                                    compact
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
 
-                                {/* Content Post (Thay đổi theo Type) */}
-                                {post.image && (
-                                    <div className="w-full relative">
-                                        <img src={post.image} alt="post img" className="w-full object-cover max-h-80" />
-                                        {post.type === "itinerary" && (
-                                            <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
-                                                <Map className="w-3.5 h-3.5" /> Lộ trình chia sẻ
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                <div className="p-4">
-                                    <h3 className="font-bold text-lg mb-2 leading-snug">{post.title}</h3>
-                                    <p className="text-sm text-[var(--text-muted)] line-clamp-3 mb-4">{post.content}</p>
-
-                                    {/* Action Bar */}
-                                    {post.type === "qa" ? (
-                                        // Giao diện Reddit cho Hỏi Đáp
-                                        <div className="flex items-center gap-4 border-t border-[var(--border-color)] pt-3">
-                                            <div className="flex items-center bg-[var(--bg-paper)] rounded-full border border-[var(--border-color)]">
-                                                <button className="p-1.5 hover:text-green-500 hover:bg-green-50 rounded-l-full transition-colors"><ArrowBigUp className="w-5 h-5" /></button>
-                                                <span className="font-bold text-sm px-1">{post.upvotes}</span>
-                                                <button className="p-1.5 hover:text-red-500 hover:bg-red-50 rounded-r-full transition-colors"><ArrowBigDown className="w-5 h-5" /></button>
-                                            </div>
-                                            <button className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text-main)]"><MessageCircle className="w-4 h-4" /> {post.comments}</button>
-                                        </div>
-                                    ) : (
-                                        // Giao diện FB/Instagram cho bài thường
-                                        <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
-                                            <div className="flex items-center gap-4">
-                                                <button className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-rose-500 transition-colors"><Heart className="w-4 h-4" /> {post.likes}</button>
-                                                <button className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><MessageCircle className="w-4 h-4" /> {post.comments}</button>
-                                            </div>
-                                            {post.type === "itinerary" ? (
-                                                <button className="flex items-center gap-1 text-xs font-bold text-[var(--accent-primary)] bg-[var(--accent-primary)]/10 px-3 py-1.5 rounded-lg hover:bg-[var(--accent-primary)]/20 transition-colors">
-                                                    <BookmarkPlus className="w-4 h-4" /> Clone
+                <aside className="lg:col-span-4">
+                    <div className="sticky top-24 space-y-6">
+                        <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-5 shadow-sm">
+                            <h3 className="font-display mb-4 flex items-center gap-2 text-lg font-bold">
+                                <Route className="h-5 w-5 text-[var(--accent-primary)]" /> Lộ trình mới chia sẻ
+                            </h3>
+                            {!overview ? (
+                                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-[var(--border-color)]" />)}</div>
+                            ) : overview.latestItineraries.length === 0 ? (
+                                <p className="text-sm text-[var(--text-muted)]">Chưa có lộ trình công khai.</p>
+                            ) : (
+                                <ul className="space-y-3">
+                                    {overview.latestItineraries.map((trip) => (
+                                        <li key={trip.id} className="flex gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] p-2.5">
+                                            <button onClick={() => openTripDetail(trip)} className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--border-color)]">
+                                                {trip.image_url && <img src={trip.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                                <button onClick={() => openTripDetail(trip)} className="block w-full truncate text-left text-sm font-bold text-[var(--text-main)] hover:underline">
+                                                    {trip.title}
                                                 </button>
+                                                <p className="truncate text-xs text-[var(--text-muted)]">
+                                                    {trip.itinerary_provinces?.map((p) => p.provinces?.name).filter(Boolean).join(", ") || "Việt Nam"} · {trip.days ?? "?"} ngày · {formatVnd(trip.estimated_cost ?? 0)}
+                                                </p>
+                                                <div className="mt-1.5 flex items-center justify-between">
+                                                    <span className="text-[11px] text-[var(--text-muted)]">{timeAgo(trip.created_at ?? new Date().toISOString())}</span>
+                                                    <button onClick={() => cloneTrip(trip)} className="text-xs font-bold text-[var(--accent-primary)] hover:underline">
+                                                        Lưu về
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+
+                        <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-5 shadow-sm">
+                            <h3 className="font-display mb-4 flex items-center gap-2 text-lg font-bold">
+                                <Trophy className="h-5 w-5 text-yellow-500" /> Bảng vinh danh
+                            </h3>
+                            {!overview ? (
+                                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--border-color)]" />)}</div>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {overview.leaderboard.map((row, index) => (
+                                        <li key={row.user.id} className="flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-[var(--bg-paper)]">
+                                            <span className={`font-display w-6 text-center text-lg font-bold ${index === 0 ? "text-yellow-500" : index === 1 ? "text-slate-400" : index === 2 ? "text-amber-700" : "text-[var(--text-muted)]"}`}>
+                                                #{index + 1}
+                                            </span>
+                                            {row.user.avatar ? (
+                                                <img src={row.user.avatar} alt="" className="h-10 w-10 rounded-full border border-[var(--border-color)] object-cover" />
                                             ) : (
-                                                <button className="text-[var(--text-muted)] hover:text-[var(--text-main)]"><Share2 className="w-4 h-4" /></button>
+                                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-primary)]/15 font-bold text-[var(--accent-primary)]">
+                                                    {row.user.name?.charAt(0).toUpperCase()}
+                                                </span>
                                             )}
-                                        </div>
-                                    )}
-                                </div>
-                            </motion.div>
-                        ))}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="flex items-center gap-1 truncate text-sm font-bold text-[var(--text-main)]">
+                                                    {row.user.name}
+                                                    {row.user.is_premium && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                                                </p>
+                                                <p className="truncate text-xs text-[var(--text-muted)]">
+                                                    {row.blogs} bài · {row.itineraries} lộ trình · {row.likes} thích
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs font-bold text-[var(--accent-primary)]">{row.points}</p>
+                                                <p className="text-[10px] text-[var(--text-muted)]">điểm</p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <p className="mt-3 text-[11px] text-[var(--text-muted)]">Điểm = 10/bài viết + 20/lộ trình công khai + 2/lượt thích.</p>
+                        </section>
+
+                        <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-5 shadow-sm">
+                            <h3 className="font-display mb-4 flex items-center gap-2 text-lg font-bold">
+                                <Flame className="h-5 w-5 text-orange-500" /> Địa điểm được lưu nhiều
+                            </h3>
+                            {!overview ? (
+                                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--border-color)]" />)}</div>
+                            ) : (
+                                <ul className="space-y-2.5">
+                                    {overview.hotLocations.map((loc) => (
+                                        <li key={loc.id} className="flex items-center gap-3">
+                                            {loc.img ? (
+                                                <img src={loc.img} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                                            ) : (
+                                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-paper)] text-[var(--text-muted)]">
+                                                    <MapPin className="h-4 w-4" />
+                                                </span>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-semibold text-[var(--text-main)]">{loc.name.split(" · ")[0]}</p>
+                                                <p className="truncate text-xs text-[var(--text-muted)]">
+                                                    {loc.province ?? "Việt Nam"} · {loc.saved_count} lượt lưu
+                                                </p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <Link href="/explore" className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-color)] py-2.5 text-sm font-bold text-[var(--text-muted)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]">
+                                <Users className="h-4 w-4" /> Khám phá theo vùng miền
+                            </Link>
+                        </section>
                     </div>
-                </div>
-
-                {/* 🌟 CỘT PHẢI (STICKY SIDEBAR - 4 Cột) */}
-                <div className="lg:col-span-4 space-y-8 relative">
-                    <div className="sticky top-24 space-y-8">
-
-                        {/* 🌟 6. THỬ THÁCH & SỰ KIỆN */}
-                        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden group cursor-pointer">
-                            <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform"><Sparkles className="w-20 h-20" /></div>
-                            <div className="relative z-10">
-                                <span className="bg-white/20 backdrop-blur-md text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">Thử thách tháng 8</span>
-                                <h3 className="font-display font-bold text-xl mt-3 mb-2 leading-snug">Review góc sống ảo chưa ai biết ở quê bạn!</h3>
-                                <p className="text-indigo-100 text-sm mb-4">Top 1 nhận Voucher 1.000.000đ & Huy hiệu &quot;Bậc thầy địa phương&quot;.</p>
-                                <button className="w-full py-2.5 bg-white text-indigo-600 rounded-xl font-bold text-sm hover:shadow-md transition-shadow">Tham gia ngay</button>
-                            </div>
-                        </div>
-
-                        {/* 🌟 3. TÌM BẠN ĐỒNG HÀNH */}
-                        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-display font-bold text-lg flex items-center gap-2"><Users className="w-5 h-5 text-[var(--accent-primary)]" /> Tìm bạn đồng hành</h3>
-                                <button className="text-[var(--text-muted)] hover:text-[var(--text-main)]"><ChevronRight className="w-5 h-5" /></button>
-                            </div>
-                            <div className="space-y-4">
-                                {BUDDIES.map(buddy => (
-                                    <div key={buddy.id} className="p-3.5 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] hover:border-[var(--accent-primary)]/40 transition-colors">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-bold text-sm">{buddy.name}</span>
-                                            <span className="text-[10px] font-bold bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] px-2 py-0.5 rounded-full flex items-center gap-1"><MapPin className="w-3 h-3" /> {buddy.dest}</span>
-                                        </div>
-                                        <p className="text-[10px] text-[var(--text-muted)] flex items-center gap-1.5 mb-2"><Calendar className="w-3 h-3" /> {buddy.dates}</p>
-                                        <p className="text-xs text-[var(--text-main)] leading-relaxed mb-3">{buddy.text}</p>
-                                        <button className="w-full py-2 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg text-xs font-bold hover:bg-[var(--accent-primary)] hover:text-white hover:border-[var(--accent-primary)] transition-colors">Nhắn tin</button>
-                                    </div>
-                                ))}
-                            </div>
-                            <button className="w-full mt-4 py-2.5 bg-[var(--bg-paper)] border border-dashed border-[var(--border-color)] rounded-xl text-sm font-bold text-[var(--text-muted)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors flex items-center justify-center gap-2">
-                                Đăng tin tìm bạn
-                            </button>
-                        </div>
-
-                        {/* 🌟 5. BẢNG VINH DANH (GAMIFICATION) */}
-                        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-5 shadow-sm">
-                            <h3 className="font-display font-bold text-lg flex items-center gap-2 mb-4"><Trophy className="w-5 h-5 text-yellow-500" /> Bảng vinh danh tháng</h3>
-                            <div className="space-y-4">
-                                {LEADERBOARD.map((user, index) => (
-                                    <div key={user.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-[var(--bg-paper)] transition-colors">
-                                        <div className={`w-6 text-center font-display font-bold text-lg ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-slate-400' : index === 2 ? 'text-amber-700' : 'text-[var(--text-muted)]'}`}>
-                                            #{index + 1}
-                                        </div>
-                                        <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover border border-[var(--border-color)]" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-bold text-sm text-[var(--text-main)] truncate">{user.name}</p>
-                                            <p className="text-xs text-[var(--text-muted)] truncate">{user.role}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-xs font-bold text-[var(--accent-primary)]">{user.points}</p>
-                                            <p className="text-[10px] text-[var(--text-muted)]">Điểm</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                </aside>
             </div>
+
+            <AnimatePresence>
+                {isCreateOpen && <CreatePostModal onClose={() => setIsCreateOpen(false)} onSuccess={() => reload()} currentUser={currentUser} />}
+            </AnimatePresence>
+            <AnimatePresence>
+                {activeTrip && <TripDetailModal2 currentUser={currentUser} itinerary={activeTrip} onClose={() => setActiveTrip(null)} onClone={() => cloneTrip(activeTrip)} />}
+            </AnimatePresence>
         </div>
     );
 }

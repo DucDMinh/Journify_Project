@@ -197,3 +197,73 @@ export interface Blog {
     is_liked: boolean;
     emotion: string;
 }
+
+export interface MonthlyStat {
+    month: string;
+    revenue: number;
+    paidOrders: number;
+    newUsers: number;
+    newItineraries: number;
+}
+
+export interface DashboardStats {
+    range: { months: number; from: string; to: string };
+    totals: {
+        users: number;
+        activeUsers: number;
+        premiumUsers: number;
+        admins: number;
+        itineraries: number;
+        publicItineraries: number;
+        locations: number;
+        provinces: number;
+        blogs: number;
+        orders: number;
+        paidOrders: number;
+        revenue: number;
+    };
+    thisMonth: MonthlyStat;
+    previousMonth: MonthlyStat;
+    monthly: MonthlyStat[];
+    ordersByStatus: { status: string; count: number }[];
+    topProvinces: { id: string; name: string; itineraries: number }[];
+    topLocations: { id: string; name: string; province: string | null; saved_count: number; img: string | null }[];
+    themes: { theme: string; count: number }[];
+    recentOrders: Order[];
+    recentUsers: Pick<User, "id" | "name" | "email" | "avatar" | "is_premium" | "created_at">[];
+}
+
+export interface RegionProvince {
+    id: string;
+    name: string;
+    image_url: string | null;
+    description: string | null;
+    best_time_to_visit: string | null;
+    locations: number;
+    itineraries: number;
+}
+
+export interface Region {
+    key: string;
+    name: string;
+    tagline: string;
+    cover: string | null;
+    locations: number;
+    itineraries: number;
+    provinces: RegionProvince[];
+}
+
+export interface BlogComment {
+    id: string;
+    content: string;
+    created_at: string;
+    blog_id: string;
+    user_id: UserRef | null;
+}
+
+export interface CommunityOverview {
+    totals: { members: number; posts: number; publicItineraries: number };
+    leaderboard: { user: UserRef & { is_premium?: boolean }; blogs: number; itineraries: number; likes: number; points: number }[];
+    hotLocations: { id: string; name: string; img: string | null; saved_count: number; province: string | null }[];
+    latestItineraries: Itinerary[];
+}

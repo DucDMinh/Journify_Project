@@ -44,7 +44,9 @@ export default function UserDashboardLayout({
     useEffect(() => {
         if (pathname === "/") setActiveNav("dashboard");
         else if (pathname.includes("/my-itinerary")) setActiveNav("trips");
-        else if (pathname.includes("/wishlist")) setActiveNav("wishlist");
+        else if (pathname.includes("/blog")) setActiveNav("wishlist");
+        else if (pathname.includes("/community")) setActiveNav("community");
+        else if (pathname.includes("/tips")) setActiveNav("tips");
     }, [pathname]);
     useEffect(() => {
         if (theme === "night") {
