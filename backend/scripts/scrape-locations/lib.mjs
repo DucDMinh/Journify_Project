@@ -17,14 +17,7 @@ export const provinceKey = (name) => removeAccents(stripProvincePrefix(name)).re
 
 export const nameKey = (name) => removeAccents(name).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
-export const distanceMeters = (a, b) => {
-    const toRad = (d) => (d * Math.PI) / 180;
-    const R = 6371000;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(h));
-};
+export { distanceMeters } from '../../src/helpers/geo.js';
 
 export const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
 

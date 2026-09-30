@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { HttpError } from '../helpers/httpError.js';
 import { provinceRepo } from '../repositories/provinceRepository.js';
 import { locationRepo } from '../repositories/locationRepository.js';
+import { optimizeItineraryDays } from './routeOptimizer.js';
 
 const DEFAULT_DAYS = 3;
 const MAX_DAYS = 14;
@@ -130,6 +131,20 @@ const resolveLeg = async (leg) => {
     };
 };
 
+// LLM có thể chép sai tọa độ -> lấy lại lat/lng từ DB theo location_id trước khi tối ưu lộ trình
+const withTrustedCoords = (days, legsData) => {
+    if (!Array.isArray(days)) return days;
+    const byId = new Map(legsData.flatMap((leg) => leg.available_locations).map((loc) => [String(loc.id), loc]));
+    return days.map((day) => {
+        if (!Array.isArray(day?.itinerary_locations)) return day;
+        const itinerary_locations = day.itinerary_locations.map((loc) => {
+            const known = byId.get(String(loc?.location_id));
+            return known ? { ...loc, lat: known.lat, lng: known.lng } : loc;
+        });
+        return { ...day, itinerary_locations };
+    });
+};
+
 const sanitizeDays = (daysCount) => {
     const n = Number(daysCount);
     if (!Number.isInteger(n) || n < 1) return DEFAULT_DAYS;
@@ -154,5 +169,6 @@ export const generateItinerary = async ({ prompt, daysCount }) => {
         throw new HttpError(404, 'Không tìm thấy địa điểm nào trong hệ thống khớp với tuyến đường của bạn. Vui lòng thử địa danh khác!');
     }
 
-    return askJson(buildPlannerPrompt(days, legsData), `Hãy xếp lịch trình cho yêu cầu: ${cleanPrompt}`, 0.5);
+    const plan = await askJson(buildPlannerPrompt(days, legsData), `Hãy xếp lịch trình cho yêu cầu: ${cleanPrompt}`, 0.5);
+    return { ...plan, itinerary_days: optimizeItineraryDays(withTrustedCoords(plan.itinerary_days, legsData)) };
 };

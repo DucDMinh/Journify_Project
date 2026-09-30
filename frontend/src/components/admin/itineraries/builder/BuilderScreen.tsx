@@ -50,7 +50,9 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
         handleAddActivity,
         handleRemoveActivity,
         handleAddLocationToItinerary,
-        handleMoveActivity } = useItineraryBuilder(props);
+        handleMoveActivity,
+        handleOptimizeDay,
+        optimizingDayId } = useItineraryBuilder(props);
     const {
         isDropdownOpen,
         setIsDropdownOpen,
@@ -155,6 +157,8 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
                             <DayCard
                                 days={days}
                                 handleMoveActivity={handleMoveActivity}
+                                handleOptimizeDay={handleOptimizeDay}
+                                optimizingDayId={optimizingDayId}
                                 handleAddActivity={handleAddActivity}
                                 handleRemoveActivity={handleRemoveActivity}
                                 handleUpdateActivity={handleUpdateActivity}

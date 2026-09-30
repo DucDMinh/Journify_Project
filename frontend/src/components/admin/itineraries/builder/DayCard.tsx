@@ -1,8 +1,8 @@
 import { Itinerary_days, Itinerary_locations } from "@/interface";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronUp, DollarSign, MapPin, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, DollarSign, Loader2, MapPin, Route, Trash2 } from "lucide-react";
 import { DroppableActivityZone, DroppableAddButton } from "./ActivityDropZone";
-import type { UpdateActivityFn } from "@/hooks/admin/itineraries/useItineraryBuilder";
+import { hasCoords, MIN_POINTS_TO_OPTIMIZE, type UpdateActivityFn } from "@/hooks/admin/itineraries/useItineraryBuilder";
 interface DayCardProp {
     days: Itinerary_days[];
     handleRemoveActivity: (dayId: string, activityId: string) => void;
@@ -12,6 +12,8 @@ interface DayCardProp {
     setCurrentActiveDayId: (id: string | null) => void;
     setCurrentActiveLocId: (id: string | null) => void;
     handleAddActivity: (dayId: string) => void;
+    handleOptimizeDay: (dayId: string) => void;
+    optimizingDayId: string | null;
 }
 
 export const DayCard = ({
@@ -22,7 +24,9 @@ export const DayCard = ({
     setIsMapModalOpen,
     setCurrentActiveDayId,
     setCurrentActiveLocId,
-    handleAddActivity
+    handleAddActivity,
+    handleOptimizeDay,
+    optimizingDayId
 }: DayCardProp) => {
 
     return (
@@ -33,6 +37,15 @@ export const DayCard = ({
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-sm font-bold text-white dark:bg-white dark:text-gray-900">{day.day_number}</div>
                         <input type="text" defaultValue={day.title} className="w-full border-none bg-transparent font-bold text-gray-900 focus:ring-0 dark:text-white outline-none" />
                     </div>
+                    <button
+                        onClick={() => handleOptimizeDay(day.id)}
+                        disabled={optimizingDayId !== null || day.itinerary_locations.filter(hasCoords).length < MIN_POINTS_TO_OPTIMIZE}
+                        title={`Giữ nguyên điểm đầu tiên, sắp xếp lại các điểm còn lại để tổng quãng đường ngắn nhất (cần ít nhất ${MIN_POINTS_TO_OPTIMIZE} điểm có tọa độ)`}
+                        className="ml-3 flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-600 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-brand-900/50 dark:bg-gray-900 dark:text-brand-400 dark:hover:bg-brand-900/20"
+                    >
+                        {optimizingDayId === day.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Route className="h-3.5 w-3.5" />}
+                        Tối ưu lộ trình
+                    </button>
                 </div>
                     <div className="p-4 space-y-4">
                         {day.itinerary_locations?.map((loc: Itinerary_locations, index: number) => (
@@ -80,7 +93,7 @@ export const DayCard = ({
                                                 </div>
                                                 <button
                                                     onClick={() => {
-                                                        handleUpdateActivity(day.id, loc.id, { location_id: "", location_name: "" });
+                                                        handleUpdateActivity(day.id, loc.id, { location_id: "", location_name: "", lat: 0, lng: 0 });
                                                     }}
                                                     className="text-xs text-gray-400 hover:text-red-500 px-2 shrink-0 transition-colors"
                                                 >

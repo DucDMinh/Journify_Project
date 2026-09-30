@@ -17,6 +17,22 @@ type DropData =
     | { type: "existing-activity"; dayId: string; activityId: string }
     | { type: "new-activity"; dayId: string };
 
+interface OptimizeRouteResult {
+    locations: Pick<Itinerary_locations, "id" | "sequence_order" | "start_time" | "end_time">[];
+    distanceMeters: number;
+    originalDistanceMeters: number;
+    changed: boolean;
+    exceedsDay: boolean;
+}
+
+// Tối ưu lộ trình cần ít nhất 3 điểm có tọa độ (2 điểm thì chỉ có một cách đi)
+export const MIN_POINTS_TO_OPTIMIZE = 3;
+
+export const hasCoords = (loc: Pick<Itinerary_locations, "lat" | "lng">) =>
+    Number.isFinite(loc.lat) && Number.isFinite(loc.lng) && !(loc.lat === 0 && loc.lng === 0);
+
+const formatKm = (meters: number) => `${(meters / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} km`;
+
 const DEFAULT_START_TIME = "08:00";
 const DEFAULT_END_TIME = "10:00";
 const HIGHLIGHT_CLASSES = ["ring-4", "ring-brand-500", "border-brand-500", "bg-brand-50", "dark:bg-brand-900/20"];
@@ -100,6 +116,7 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
     const [days, setDays] = useState<Itinerary_days[]>(() => normalizeLoadedDays(currentItinerary));
     const [activeDragLoc, setActiveDragLoc] = useState<Location | null>(null);
     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+    const [optimizingDayId, setOptimizingDayId] = useState<string | null>(null);
 
     const [syncKey, setSyncKey] = useState({
         id: currentItinerary?.id,
@@ -162,6 +179,45 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
             [locs[index], locs[target]] = [locs[target], locs[index]];
             return { ...day, itinerary_locations: reindex(locs) };
         });
+    };
+
+    // Giữ điểm đầu tiên, sắp lại các điểm còn lại trong ngày cho tổng quãng đường ngắn nhất (Nearest Neighbor + 2-opt ở backend)
+    const handleOptimizeDay = async (dayId: string) => {
+        const day = days.find((d) => d.id === dayId);
+        if (!day) return;
+
+        setOptimizingDayId(dayId);
+        try {
+            const { response, data } = await api.post<OptimizeRouteResult>("/map/optimize-route", {
+                locations: day.itinerary_locations.map(({ id, lat, lng, start_time, end_time }) => ({ id, lat, lng, start_time, end_time })),
+            });
+            if (!response.ok) throw new Error(data.message || "Không thể tối ưu lộ trình");
+            const result = data.data;
+            if (!result.changed) {
+                toast.info(`${day.title}: thứ tự hiện tại đã là ngắn nhất (${formatKm(result.distanceMeters)})`);
+                return;
+            }
+
+            const patches = new Map(result.locations.map((loc) => [loc.id, loc]));
+            updateDay(dayId, (current) => {
+                const byId = new Map(current.itinerary_locations.map((loc) => [loc.id, loc]));
+                const ordered = result.locations.flatMap(({ id }) => {
+                    const loc = byId.get(id);
+                    return loc ? [{ ...loc, ...patches.get(id) }] : [];
+                });
+                // Hoạt động được thêm trong lúc chờ phản hồi thì nối vào cuối
+                const added = current.itinerary_locations.filter((loc) => !patches.has(loc.id));
+                return { ...current, itinerary_locations: reindex([...ordered, ...added]) };
+            });
+            toast.success(`Đã tối ưu ${day.title}: ${formatKm(result.originalDistanceMeters)} → ${formatKm(result.distanceMeters)}`);
+            if (result.exceedsDay) {
+                toast.warning(`${day.title} vượt quá 24h sau khi cộng thời gian di chuyển, hãy kiểm tra lại giờ`);
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Có lỗi xảy ra khi tối ưu lộ trình");
+        } finally {
+            setOptimizingDayId(null);
+        }
     };
 
     const handleAddLocationToItinerary = (location: Location) => {
@@ -252,5 +308,7 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
         handleRemoveActivity,
         handleAddLocationToItinerary,
         handleMoveActivity,
+        handleOptimizeDay,
+        optimizingDayId,
     };
 };

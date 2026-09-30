@@ -8,5 +8,6 @@ router.get('/geocode', verifyToken, mapController.searchPlace);
 router.get('/reverse', verifyToken, mapController.reversePlace);
 router.get('/province-from-coords', verifyToken, requireAdmin, mapController.provinceFromCoords);
 router.get('/extract', verifyToken, requireAdmin, mapController.extractMap);
+router.post('/optimize-route', verifyToken, mapController.optimizeRoute);
 
 export default router;
