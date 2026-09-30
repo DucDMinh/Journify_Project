@@ -34,8 +34,8 @@ class ProvinceRepository extends BaseRepository {
         return counts;
     }
 
-    async findByName(name) {
-        return unwrap(await this.table().select('id, name').ilike('name', `%${name}%`).limit(1).maybeSingle());
+    async getAllNames() {
+        return unwrap(await this.table().select('id, name'));
     }
 }
 

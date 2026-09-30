@@ -112,7 +112,7 @@ const parseTime = (value) => {
 };
 
 const pad = (n) => String(n).padStart(2, '0');
-const formatTime = (minutes) => {
+export const formatTime = (minutes) => {
     const clamped = Math.min(minutes, LAST_MINUTE_OF_DAY);
     return `${pad(Math.floor(clamped / 60))}:${pad(clamped % 60)}`;
 };
@@ -179,11 +179,4 @@ export const optimizeDay = (activities) => {
     });
     const { activities: scheduled, exceedsDay } = reschedule(list, reordered);
     return { ...stats, exceedsDay, activities: scheduled.map((activity, index) => ({ ...activity, sequence_order: index + 1 })) };
-};
-
-export const optimizeItineraryDays = (days) => {
-    if (!Array.isArray(days)) return days;
-    return days.map((day) =>
-        Array.isArray(day?.itinerary_locations) ? { ...day, itinerary_locations: optimizeDay(day.itinerary_locations).activities } : day,
-    );
 };

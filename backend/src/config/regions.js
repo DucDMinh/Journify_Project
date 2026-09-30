@@ -1,3 +1,5 @@
+import { normalizeText } from '../helpers/text.js';
+
 // Phân vùng 34 tỉnh thành (sau sáp nhập 01/07/2025). So khớp theo tên đã bỏ dấu và tiền tố "Tỉnh/Thành phố".
 export const REGIONS = [
     {
@@ -27,16 +29,8 @@ export const REGIONS = [
     },
 ];
 
-const normalize = (name) =>
-    String(name ?? '')
-        .replace(/^(Tỉnh|Thành phố|TP\.?)\s+/i, '')
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/đ/g, 'd')
-        .replace(/Đ/g, 'D')
-        .toLowerCase()
-        .trim();
+export const normalizeProvinceName = (name) => normalizeText(String(name ?? '').trim().replace(/^(Tỉnh|Thành phố|TP\.?)\s*/i, ''));
 
-const regionByProvince = new Map(REGIONS.flatMap((r) => r.provinces.map((p) => [normalize(p), r.key])));
+const regionByProvince = new Map(REGIONS.flatMap((r) => r.provinces.map((p) => [normalizeProvinceName(p), r.key])));
 
-export const regionKeyOf = (provinceName) => regionByProvince.get(normalize(provinceName)) ?? null;
+export const regionKeyOf = (provinceName) => regionByProvince.get(normalizeProvinceName(provinceName)) ?? null;

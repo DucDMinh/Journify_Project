@@ -15,8 +15,12 @@ export const env = {
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
     supabaseUrl: required('SUPABASE_URL'),
     supabaseServiceKey: required('SUPABASE_SERVICE_KEY'),
-    groqApiKey: process.env.GROQ_API_KEY || '',
-    groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    // Nhà cung cấp AI tương thích OpenAI (mặc định Groq). Vẫn đọc GROQ_* để không phải sửa file .env cũ.
+    ai: {
+        baseUrl: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
+        apiKey: process.env.AI_API_KEY || process.env.GROQ_API_KEY || '',
+        model: process.env.AI_MODEL || process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    },
     payos: {
         clientId: process.env.PAYOS_CLIENT_ID || '',
         apiKey: process.env.PAYOS_API_KEY || '',

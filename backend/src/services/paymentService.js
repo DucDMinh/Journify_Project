@@ -24,7 +24,6 @@ const getPayOS = () => {
     return payOS;
 };
 
-// PayOS yêu cầu orderCode là số nguyên dương duy nhất, tối đa 2^53
 const generateOrderCode = () => Date.now() * 1000 + randomInt(0, 1000);
 
 const isValidReturnUrl = (url) => {

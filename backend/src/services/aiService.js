@@ -1,148 +1,252 @@
 import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { HttpError } from '../helpers/httpError.js';
+import { normalizeText } from '../helpers/text.js';
+import { regionKeyOf } from '../config/regions.js';
+import { resolveProvinces } from '../config/provinceMerger.js';
 import { provinceRepo } from '../repositories/provinceRepository.js';
 import { locationRepo } from '../repositories/locationRepository.js';
-import { optimizeItineraryDays } from './routeOptimizer.js';
+import { buildItineraryDays } from './itineraryPlanner.js';
+
+// Quy trình: (1) AI phân tích yêu cầu -> các chặng/tỉnh + nhịp độ; (2) hệ thống quy đổi tỉnh (kể cả tên trước sáp nhập)
+// và lấy địa điểm thật từ DB; (3) AI chọn địa điểm, viết ghi chú; (4) hệ thống kiểm tra lựa chọn, đảm bảo đủ số điểm,
+// chia ngày, tối ưu lộ trình và xếp giờ. Những phần cần chính xác do code đảm nhận, AI chỉ lo phần hiểu ngôn ngữ.
 
 const DEFAULT_DAYS = 3;
 const MAX_DAYS = 14;
 const MAX_PROMPT_LENGTH = 1500;
+const MAX_CANDIDATES = 60;
+const MAX_DESCRIPTION_LENGTH = 150;
+
+// Nhịp độ chuyến đi: số điểm mỗi ngày và thời gian tham quan mặc định (phút)
+const PACES = {
+    cham: { label: 'chậm, thư giãn', stopsPerDay: 3, stayMinutes: 150 },
+    vua: { label: 'vừa phải', stopsPerDay: 4, stayMinutes: 90 },
+    nhanh: { label: 'nhanh, đi nhiều nơi', stopsPerDay: 5, stayMinutes: 60 },
+};
 
 let client;
 const getClient = () => {
-    if (!env.groqApiKey) throw new HttpError(503, 'Tính năng AI chưa được cấu hình (thiếu GROQ_API_KEY)');
-    client ??= new OpenAI({ apiKey: env.groqApiKey, baseURL: 'https://api.groq.com/openai/v1' });
+    if (!env.ai.apiKey) throw new HttpError(503, 'Tính năng AI chưa được cấu hình (thiếu AI_API_KEY)');
+    client ??= new OpenAI({ apiKey: env.ai.apiKey, baseURL: env.ai.baseUrl });
     return client;
 };
 
-const RECEPTIONIST_PROMPT = `
-Đọc yêu cầu du lịch sau và phân tích thành các chặng đường (route legs).
-Nếu yêu cầu KHÔNG liên quan đến du lịch, đặt "is_valid" = false.
+const buildReceptionistPrompt = (provinceNames) => `
+Đọc yêu cầu du lịch và phân tích thành các chặng đường (route legs).
+Nếu yêu cầu KHÔNG liên quan đến du lịch, đặt "is_valid" = false và giải thích ngắn trong "error_message".
 
-LUẬT XỬ LÝ THÔNG MINH (QUAN TRỌNG):
-1. Nếu người dùng nhắc đến một tên thử thách, cung đường, hoặc danh hiệu chung chung (VD: "tứ đại đỉnh đèo", "Xuyên Việt", "vòng cung Tây Bắc"...):
-   - BẠN PHẢI TỰ ĐỘNG PHÂN TÍCH KỸ CÁC ĐỊA ĐIỂM CÓ TRONG YÊU CẦU VÀ TÌM RA CÁC TỈNH/ĐỊA ĐIỂM cốt lõi tạo nên hành trình đó.
-   - Chia nhỏ hành trình thành NHIỀU CHẶNG (nhiều phần tử trong mảng route_legs) tương ứng với các tỉnh/địa danh phải đi qua.
-2. province_name: Tên Tỉnh/Thành phố chính của chặng đó.
-3. keywords: Các địa danh, ngọn đèo, hoặc điểm tham quan cụ thể thuộc chặng đó.
+QUY TẮC:
+1. Mỗi chặng ứng với MỘT tỉnh/thành. Từ 01/07/2025 Việt Nam còn 34 tỉnh/thành sau sáp nhập, gồm:
+${provinceNames.join(', ')}.
+   - Ưu tiên ghi đúng một tên trong danh sách trên vào "province_name".
+   - Nếu khách dùng tên tỉnh cũ (VD: Hà Giang, Yên Bái, Quảng Nam, Kiên Giang) hoặc tên điểm đến (VD: Sa Pa, Đà Lạt, Phú Quốc, Hội An),
+     hãy ghi tên tỉnh chứa địa danh đó; ghi tên tỉnh cũ cũng được, hệ thống sẽ tự quy đổi sang tỉnh mới.
+2. Nếu khách nhắc tới cung đường hoặc danh hiệu chung (VD: "tứ đại đỉnh đèo", "vòng cung Tây Bắc"), tự suy ra các tỉnh và địa danh
+   cốt lõi của hành trình, chia thành nhiều chặng theo thứ tự di chuyển hợp lý.
+3. "keywords": các địa danh cụ thể khách nhắc tới hoặc thuộc hành trình (tên đèo, thác, bản, phố cổ...). Không ghi tên tỉnh vào đây.
+4. "pace" (nhịp độ): "cham" nếu khách muốn thư giãn, chữa lành, ít điểm; "nhanh" nếu muốn đi nhiều nơi, check-in, lịch dày; còn lại "vua".
 
-Ví dụ nếu khách nhập "Đi tứ đại đỉnh đèo", AI tự chia thành 4 chặng:
-- Chặng 1: Tỉnh Lào Cai/Lai Châu (Keyword: Đèo Ô Quy Hồ)
-- Chặng 2: Tỉnh Yên Bái (Keyword: Đèo Khau Phạ)
-- Chặng 3: Tỉnh Hà Giang (Keyword: Đèo Mã Pí Lèng)
-- Chặng 4: Tỉnh Điện Biên/Sơn La (Keyword: Đèo Pha Đin)
+Ví dụ "Đi tứ đại đỉnh đèo": chặng 1 Lào Cai (keywords: Ô Quy Hồ, Khau Phạ), chặng 2 Tuyên Quang (keywords: Mã Pí Lèng),
+chặng 3 Điện Biên (keywords: Pha Đin).
 
 Trả về JSON đúng cấu trúc:
 {
   "is_valid": true,
   "error_message": "",
+  "pace": "vua",
   "route_legs": [
-    { "leg": 1, "province_name": "Tên Tỉnh 1", "keywords": ["Địa danh/Đèo 1"] },
-    { "leg": 2, "province_name": "Tên Tỉnh 2", "keywords": ["Địa danh/Đèo 2"] }
+    { "leg": 1, "province_name": "Tên tỉnh", "keywords": ["Địa danh"] }
   ]
 }
 `;
 
-const buildPlannerPrompt = (daysCount, legsData) => `
-Bạn là hệ thống ánh xạ dữ liệu và chuyên gia xếp lịch trình (Data Mapper & Travel Planner).
-Nhiệm vụ: Tạo lịch trình ${daysCount} ngày từ DANH SÁCH ĐỊA ĐIỂM CUNG CẤP.
+const shortName = (name) => String(name ?? '').split(' · ')[0].trim();
 
-LUẬT TỐI THƯỢNG (PHẢI TUÂN THỦ 100%):
-1. BẠN KHÔNG ĐƯỢC PHÉP SÁNG TẠO ĐỊA ĐIỂM MỚI. CHỈ ĐƯỢC PHÉP CHỌN CÁC ĐỊA ĐIỂM CÓ TRONG "DANH SÁCH ĐỊA ĐIỂM".
-2. Phải sao chép chính xác tuyệt đối 'location_id', 'location_name', 'lat', 'lng' từ danh sách.
-3. Nếu một ngày không có đủ địa điểm trong danh sách, hãy để ít địa điểm thôi, TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM.
-4. TÍNH TOÁN LỘ TRÌNH THỰC TẾ: Các địa điểm trong cùng một ngày phải có tính logic về mặt di chuyển (dựa vào tên và tọa độ lat/lng nếu có thể phán đoán).
-5. CÁ NHÂN HÓA THEO YÊU CẦU (RẤT QUAN TRỌNG):
-   - Hãy đọc kỹ "Yêu cầu của người dùng" để tinh chỉnh 'start_time' và 'end_time'.
-   - Nếu khách yêu cầu "đi nhiều nơi, dừng 30-45p": Hãy nhồi nhiều địa điểm vào một ngày, mỗi 'start_time' và 'end_time' cách nhau đúng 30-45 phút, cộng thêm thời gian di chuyển.
-   - Nếu khách yêu cầu "thư giãn, chữa lành": Hãy LỌC RA những địa điểm phù hợp (quán cafe, suối, resort...), xếp ít điểm thôi (2-3 điểm/ngày), và cho thời gian lưu trú dài (2-4 tiếng/điểm).
-   - Viết 'activity_note' dựa trên phong cách khách muốn (Ví dụ: "Ngồi chill ngắm hoàng hôn..." thay vì "Chạy show check-in...").
-6. TÍNH TOÁN NGÂN SÁCH THỰC TẾ (estimated_cost):
-   - BƯỚC 1: Đọc "Mức ngân sách" từ yêu cầu của người dùng (Thấp/Trung bình/Cao) để ước lượng chi phí sinh hoạt (Khách sạn + Ăn uống + Đi lại) cho 1 ngày:
-     + Ngân sách "Thấp" (Tiết kiệm): khoảng 500,000 VNĐ - 700,000 VNĐ / 1 ngày.
-     + Ngân sách "Trung bình": khoảng 1,000,000 VNĐ - 1,500,000 VNĐ / 1 ngày.
-     + Ngân sách "Cao" (Cao cấp): khoảng 2,500,000 VNĐ - 4,500,000 VNĐ / 1 ngày.
-   - BƯỚC 2: Tính thuộc tính 'cost' (giá vé/dịch vụ/nghỉ ngơi) của từng ĐỊA ĐIỂM TRONG NGÀY mà bạn ĐÃ CHỌN từ danh sách và viết 'activity_note' những khoản cần chi. (ĐIỀU NÀY LÀ BẮT BUỘC).
-   - BƯỚC 3: Công thức: estimated_cost = (Tổng cost các địa điểm).
-   - Yêu cầu: Trả về một con số nguyên (Ví dụ: 3450000). TUYỆT ĐỐI KHÔNG trả về chuỗi.
-DANH SÁCH ĐỊA ĐIỂM (CHỈ ĐƯỢC CHỌN TRONG NÀY):
-${JSON.stringify(legsData)}
+const describeCandidate = (loc, index) => {
+    const parts = [`L${index + 1}`, loc.name, loc.provinces?.name ?? '', `độ khó: ${loc.difficulty_level || '-'}`, `đã lưu: ${loc.saved_count ?? 0}`];
+    if (loc.description) parts.push(loc.description.trim().slice(0, MAX_DESCRIPTION_LENGTH));
+    return parts.join(' | ');
+};
 
-TRẢ VỀ JSON ĐÚNG CẤU TRÚC NÀY:
+const buildPlannerPrompt = ({ daysCount, pace, targetStops, candidates }) => `
+Bạn là chuyên gia lên lịch trình du lịch Việt Nam. Chuyến đi ${daysCount} ngày, nhịp độ ${PACES[pace].label}.
+
+DANH SÁCH ĐỊA ĐIỂM (mỗi dòng: mã | tên | tỉnh | độ khó | số người đã lưu | mô tả nếu có):
+${candidates.map(describeCandidate).join('\n')}
+
+NHIỆM VỤ:
+1. Chọn ĐÚNG ${targetStops} địa điểm trong danh sách trên, ghi bằng mã (VD: "L3"). Không lặp lại, không tự tạo địa điểm mới.
+   Ưu tiên địa điểm khớp yêu cầu và phong cách của khách, địa danh nổi tiếng, nhiều người lưu.
+   Nếu hai dòng là cùng một địa điểm (tên giống nhau hoặc chỉ khác ngôn ngữ), chỉ chọn một.
+2. Liệt kê theo thứ tự hành trình (theo thứ tự các chặng). KHÔNG cần chia ngày hay ghi giờ: hệ thống sẽ tự chia ngày,
+   tối ưu quãng đường và xếp giờ.
+3. Với mỗi địa điểm:
+   - "ref" và "name": mã và tên chép đúng từ dòng tương ứng trong danh sách.
+   - "duration_minutes": thời gian tham quan hợp lý (30-240 phút); lâu hơn nếu khách muốn thư giãn.
+   - "cost": ước tính chi phí vé/dịch vụ tại điểm đó (VNĐ, số nguyên; 0 nếu miễn phí). Không cộng tiền ăn ở.
+   - "activity_note": 1-2 câu tiếng Việt gợi ý nên làm gì ở ĐÚNG địa điểm đó, theo phong cách khách muốn.
+     Không nhắc thời điểm trong ngày (sáng, trưa, hoàng hôn...) vì giờ giấc do hệ thống xếp sau.
+4. "daily_expense": chi phí ăn, ở, đi lại ước tính cho MỘT ngày của một người (VNĐ, số nguyên), hợp với ngân sách của khách.
+5. "title", "theme", "summary" cho cả chuyến đi, bằng tiếng Việt.
+
+Trả về JSON đúng cấu trúc:
 {
   "title": "Tên chuyến đi",
   "theme": "Khám phá/Nghỉ dưỡng...",
-  "summary": "Tóm tắt...",
-  "estimated_cost": 5000000,
-  "itinerary_provinces": [
-    { "province_id": "Lấy chính xác từ trường province_id trong danh sách mớm vào", "province_name": "Tên của tỉnh đó" }
-  ],
-  "itinerary_days": [
-    {
-      "day_number": 1,
-      "title": "Ngày 1: ...",
-      "itinerary_locations": [
-        {
-          "location_id": "Lấy từ id trong danh sách",
-          "location_name": "Lấy từ name trong danh sách",
-          "lat": 12.34,
-          "lng": 105.67,
-          "start_time": "08:00",
-          "end_time": "10:00",
-          "cost": 100000,
-          "activity_note": "Ghi chú...",
-          "sequence_order": 1
-        }
-      ]
-    }
+  "summary": "Tóm tắt 2-3 câu",
+  "daily_expense": 700000,
+  "stops": [
+    { "ref": "L1", "name": "Tên địa điểm", "duration_minutes": 90, "cost": 0, "activity_note": "..." }
   ]
 }
 `;
 
 const askJson = async (systemPrompt, userPrompt, temperature) => {
-    const res = await getClient().chat.completions.create({
-        model: env.groqModel,
-        response_format: { type: 'json_object' },
-        temperature,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-        ],
-    });
-    return JSON.parse(res.choices[0].message.content);
+    let res;
+    try {
+        res = await getClient().chat.completions.create({
+            model: env.ai.model,
+            response_format: { type: 'json_object' },
+            temperature,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+        });
+    } catch (error) {
+        if (error?.status === 429) {
+            throw new HttpError(429, 'Dịch vụ AI đang quá tải hoặc đã hết lượt miễn phí, vui lòng thử lại sau ít phút.');
+        }
+        throw new HttpError(502, `Không gọi được dịch vụ AI: ${error.message}`);
+    }
+    try {
+        return JSON.parse(res.choices[0].message.content);
+    } catch {
+        throw new HttpError(502, 'AI trả về dữ liệu không đúng định dạng JSON');
+    }
 };
 
-const resolveLeg = async (leg) => {
-    const province = leg.province_name ? await provinceRepo.findByName(leg.province_name) : null;
-    let locations;
-    if (province) {
-        locations = await locationRepo.getByProvinceForAi(province.id);
-    } else if (leg.keywords?.length) {
-        locations = await locationRepo.searchByKeywordsForAi(leg.keywords);
-    } else {
-        locations = await locationRepo.searchByKeywordsForAi([leg.province_name]);
+const hasCoords = (loc) => Number.isFinite(loc.lat) && Number.isFinite(loc.lng) && !(loc.lat === 0 && loc.lng === 0);
+
+// Bỏ trùng (cùng tên), xếp hạng (khớp từ khóa > lượt lưu > đánh giá) và chia đều hạn mức cho các tỉnh
+// để tỉnh nào trong hành trình cũng có địa điểm trong danh sách gửi AI.
+const rankCandidates = (locations, keywords) => {
+    const keys = keywords.map(normalizeText).filter((key) => key.length >= 2);
+    const matchesKeyword = (loc) => (keys.some((key) => normalizeText(loc.name).includes(key)) ? 1 : 0);
+
+    const unique = new Map();
+    for (const loc of locations.filter(hasCoords)) {
+        const key = normalizeText(shortName(loc.name));
+        const existing = unique.get(key);
+        if (!existing || (loc.saved_count ?? 0) > (existing.saved_count ?? 0)) unique.set(key, loc);
     }
+    const sorted = [...unique.values()].sort(
+        (a, b) =>
+            matchesKeyword(b) - matchesKeyword(a) ||
+            (b.saved_count ?? 0) - (a.saved_count ?? 0) ||
+            (b.rating ?? 0) - (a.rating ?? 0),
+    );
+    const groups = Map.groupBy(sorted, (loc) => loc.province_id);
+    const perProvince = Math.ceil(MAX_CANDIDATES / Math.max(1, groups.size));
+    return [...groups.values()].flatMap((list) => list.slice(0, perProvince)).slice(0, MAX_CANDIDATES);
+};
+
+const loadCandidates = async (legs, provinces) => {
+    const matched = new Map();
+    const unmatched = [];
+    for (const leg of legs) {
+        const found = resolveProvinces(leg.province_name, provinces);
+        found.forEach((province) => matched.set(province.id, province));
+        if (!found.length) unmatched.push(leg);
+    }
+
+    const [byProvince, byKeyword] = await Promise.all([
+        locationRepo.getByProvincesForAi([...matched.keys()]),
+        // Chặng không xác định được tỉnh thì tìm theo địa danh
+        unmatched.length ? locationRepo.searchByKeywordsForAi(unmatched.flatMap((leg) => [...leg.keywords, leg.province_name])) : [],
+    ]);
     return {
-        leg_number: leg.leg,
-        province_id: province?.id ?? null,
-        province_matched: province?.name ?? leg.province_name,
-        available_locations: locations,
+        candidates: rankCandidates([...byProvince, ...byKeyword], legs.flatMap((leg) => leg.keywords)),
+        searchedNames: [...[...matched.values()].map((p) => p.name), ...unmatched.map((leg) => leg.province_name)],
     };
 };
 
-// LLM có thể chép sai tọa độ -> lấy lại lat/lng từ DB theo location_id trước khi tối ưu lộ trình
-const withTrustedCoords = (days, legsData) => {
-    if (!Array.isArray(days)) return days;
-    const byId = new Map(legsData.flatMap((leg) => leg.available_locations).map((loc) => [String(loc.id), loc]));
-    return days.map((day) => {
-        if (!Array.isArray(day?.itinerary_locations)) return day;
-        const itinerary_locations = day.itinerary_locations.map((loc) => {
-            const known = byId.get(String(loc?.location_id));
-            return known ? { ...loc, lat: known.lat, lng: known.lng } : loc;
+const toRef = (value) => {
+    const ref = String(value ?? '').trim().toUpperCase();
+    return /^\d+$/.test(ref) ? `L${ref}` : ref;
+};
+
+const toCost = (value) => {
+    const cost = Math.round(Number(value));
+    return Number.isFinite(cost) && cost > 0 ? cost : 0;
+};
+
+// AI đôi khi ghi lệch mã so với tên (ghi chú của điểm này gán cho mã điểm khác) -> đối chiếu tên để sửa
+const findCandidate = (stop, byRef, candidates) => {
+    const byCode = byRef.get(toRef(stop?.ref));
+    const name = normalizeText(shortName(stop?.name));
+    if (!name) return byCode;
+    const sameName = (loc) => normalizeText(shortName(loc.name)) === name;
+    if (byCode && sameName(byCode)) return byCode;
+    return candidates.find(sameName) ?? byCode;
+};
+
+// Ghép lựa chọn của AI với dữ liệu thật: bỏ mã không tồn tại hoặc bị lặp; AI chọn thiếu thì bổ sung
+// các địa điểm xếp hạng cao nhất còn lại để đủ số điểm theo nhịp độ.
+const pickStops = (aiStops, candidates, target, stayMinutes) => {
+    const byRef = new Map(candidates.map((loc, index) => [`L${index + 1}`, loc]));
+    const chosen = new Map();
+    for (const stop of Array.isArray(aiStops) ? aiStops : []) {
+        const loc = findCandidate(stop, byRef, candidates);
+        if (!loc || chosen.has(loc.id) || chosen.size >= target) continue;
+        chosen.set(loc.id, {
+            location: loc,
+            duration_minutes: stop.duration_minutes ?? stayMinutes,
+            cost: toCost(stop.cost),
+            activity_note: String(stop.activity_note ?? '').trim(),
         });
-        return { ...day, itinerary_locations };
-    });
+    }
+    for (const loc of candidates) {
+        if (chosen.size >= target) break;
+        if (!chosen.has(loc.id)) chosen.set(loc.id, { location: loc, duration_minutes: stayMinutes, cost: 0, activity_note: '' });
+    }
+    return [...chosen.values()].map((stop) => ({ ...stop, lat: stop.location.lat, lng: stop.location.lng }));
+};
+
+const dayTitle = (dayNumber, stops) => {
+    if (!stops.length) return `Ngày ${dayNumber}: Tự do nghỉ ngơi`;
+    const first = shortName(stops[0].location.name);
+    return stops.length > 1 ? `Ngày ${dayNumber}: ${first} → ${shortName(stops.at(-1).location.name)}` : `Ngày ${dayNumber}: ${first}`;
+};
+
+const toItinerary = (plan, dayStops) => {
+    const allStops = dayStops.flat();
+    const provinces = new Map(allStops.map((stop) => [stop.location.province_id, stop.location.provinces?.name ?? '']));
+    // Tổng chi phí = vé/dịch vụ tại các điểm + chi phí ăn, ở, đi lại mỗi ngày
+    const ticketCost = allStops.reduce((sum, stop) => sum + stop.cost, 0);
+    return {
+        title: String(plan?.title ?? '').trim(),
+        theme: String(plan?.theme ?? '').trim(),
+        summary: String(plan?.summary ?? '').trim(),
+        estimated_cost: ticketCost + dayStops.length * toCost(plan?.daily_expense),
+        itinerary_provinces: [...provinces].map(([province_id, province_name]) => ({ province_id, province_name })),
+        itinerary_days: dayStops.map((stops, index) => ({
+            day_number: index + 1,
+            title: dayTitle(index + 1, stops),
+            itinerary_locations: stops.map((stop, order) => ({
+                location_id: stop.location.id,
+                location_name: stop.location.name,
+                lat: stop.lat,
+                lng: stop.lng,
+                start_time: stop.start_time,
+                end_time: stop.end_time,
+                cost: stop.cost,
+                activity_note: stop.activity_note,
+                sequence_order: order + 1,
+            })),
+        })),
+    };
 };
 
 const sanitizeDays = (daysCount) => {
@@ -157,18 +261,30 @@ export const generateItinerary = async ({ prompt, daysCount }) => {
     }
     const cleanPrompt = prompt.trim().slice(0, MAX_PROMPT_LENGTH);
     const days = sanitizeDays(daysCount);
+    // Chỉ dùng các tỉnh có trong danh sách 34 tỉnh chính thức (bỏ dữ liệu rác trong bảng provinces)
+    const provinces = (await provinceRepo.getAllNames()).filter((p) => regionKeyOf(p.name));
 
-    const intent = await askJson(RECEPTIONIST_PROMPT, cleanPrompt, 0);
+    const intent = await askJson(buildReceptionistPrompt(provinces.map((p) => p.name)), cleanPrompt, 0);
     if (!intent.is_valid || !Array.isArray(intent.route_legs) || intent.route_legs.length === 0) {
         throw new HttpError(400, intent.error_message || 'Yêu cầu không hợp lệ.');
     }
+    const legs = intent.route_legs.map((leg) => ({
+        province_name: String(leg?.province_name ?? ''),
+        keywords: Array.isArray(leg?.keywords) ? leg.keywords.map(String) : [],
+    }));
+    const pace = PACES[intent.pace] ? intent.pace : 'vua';
 
-    const legsData = await Promise.all(intent.route_legs.map(resolveLeg));
-    const totalLocations = legsData.reduce((sum, leg) => sum + leg.available_locations.length, 0);
-    if (totalLocations === 0) {
-        throw new HttpError(404, 'Không tìm thấy địa điểm nào trong hệ thống khớp với tuyến đường của bạn. Vui lòng thử địa danh khác!');
+    const { candidates, searchedNames } = await loadCandidates(legs, provinces);
+    if (candidates.length === 0) {
+        throw new HttpError(404, `Hệ thống chưa có địa điểm nào cho: ${searchedNames.join(', ') || cleanPrompt}. Vui lòng thử địa danh khác!`);
     }
 
-    const plan = await askJson(buildPlannerPrompt(days, legsData), `Hãy xếp lịch trình cho yêu cầu: ${cleanPrompt}`, 0.5);
-    return { ...plan, itinerary_days: optimizeItineraryDays(withTrustedCoords(plan.itinerary_days, legsData)) };
+    const targetStops = Math.min(candidates.length, days * PACES[pace].stopsPerDay);
+    const plan = await askJson(
+        buildPlannerPrompt({ daysCount: days, pace, targetStops, candidates }),
+        `Yêu cầu của khách: ${cleanPrompt}`,
+        0.4,
+    );
+    const stops = pickStops(plan?.stops, candidates, targetStops, PACES[pace].stayMinutes);
+    return toItinerary(plan, buildItineraryDays(stops, days));
 };

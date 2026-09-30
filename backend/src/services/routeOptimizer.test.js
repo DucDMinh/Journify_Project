@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    buildDistanceMatrix, pathLength, nearestNeighbor, twoOpt, optimizeOrder, optimizeDay, optimizeItineraryDays, estimateTravelMinutes,
+    buildDistanceMatrix, pathLength, nearestNeighbor, twoOpt, optimizeOrder, optimizeDay, estimateTravelMinutes,
 } from './routeOptimizer.js';
 
 // Bộ sinh số ngẫu nhiên có seed để test lặp lại được
@@ -139,11 +139,4 @@ test('điểm đầu tiên luôn giữ nguyên dù đi từ đầu khác sẽ ng
     const activities = onLine(2, 0, 3, 1).map((p, i) => ({ id: `x${i}`, ...p }));
     const result = optimizeDay(activities);
     assert.deepEqual(result.activities.map((a) => a.id), ['x0', 'x2', 'x3', 'x1']);
-});
-
-test('optimizeItineraryDays tối ưu từng ngày, bỏ qua ngày không hợp lệ', () => {
-    const day = { day_number: 1, itinerary_locations: onLine(0, 3, 1, 2).map((p, i) => ({ id: `y${i}`, ...p })) };
-    const [optimized, broken] = optimizeItineraryDays([day, null]);
-    assert.deepEqual(optimized.itinerary_locations.map((a) => a.id), ['y0', 'y2', 'y3', 'y1']);
-    assert.equal(broken, null);
 });

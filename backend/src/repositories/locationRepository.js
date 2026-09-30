@@ -1,6 +1,7 @@
 import { BaseRepository, unwrap } from './repo.js';
 
-const AI_LOCATION_FIELDS = 'id, name, lat, lng, description';
+const AI_LOCATION_FIELDS = 'id, name, lat, lng, description, difficulty_level, rating, saved_count, province_id, provinces(name)';
+const AI_MAX_LOCATIONS = 300;
 
 class LocationRepository extends BaseRepository {
     constructor() {
@@ -29,12 +30,16 @@ class LocationRepository extends BaseRepository {
         );
     }
 
-    async getByProvinceForAi(provinceId, limit = 12) {
-        return unwrap(await this.table().select(AI_LOCATION_FIELDS).eq('province_id', provinceId).limit(limit));
+    async getByProvincesForAi(provinceIds) {
+        if (!provinceIds.length) return [];
+        return unwrap(await this.table().select(AI_LOCATION_FIELDS).in('province_id', provinceIds).limit(AI_MAX_LOCATIONS));
     }
 
-    async searchByKeywordsForAi(keywords, limit = 12) {
-        const orFilter = keywords.map((kw) => `name.ilike.%${kw}%,description.ilike.%${kw}%`).join(',');
+    async searchByKeywordsForAi(keywords, limit = 30) {
+        // Bỏ ký tự đặc biệt của cú pháp filter PostgREST (dấu phẩy, ngoặc, %) trong từ khóa do LLM sinh ra
+        const safe = keywords.map((kw) => String(kw).replace(/[,()%*\\]/g, ' ').trim()).filter((kw) => kw.length >= 2);
+        if (!safe.length) return [];
+        const orFilter = safe.map((kw) => `name.ilike.%${kw}%,description.ilike.%${kw}%`).join(',');
         return unwrap(await this.table().select(AI_LOCATION_FIELDS).or(orFilter).limit(limit));
     }
 }
