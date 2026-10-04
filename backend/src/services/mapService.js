@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { env } from '../config/env.js';
 import { HttpError } from '../helpers/httpError.js';
+import { chunkPath, distanceMeters } from '../helpers/geo.js';
 
 const GOOGLE_MAPS_HOSTS = new Set([
     'maps.app.goo.gl',
@@ -183,4 +184,120 @@ export const extractGoogleMapsPreview = async (rawUrl) => {
         fileName: 'google-map-preview.jpg',
         mimeType,
     };
+};
+
+const ROUTE_TIMEOUT_MS = 30000;
+const ROUTE_MAX_LOCATIONS = 10;
+const ROUTE_MAX_SPAN_METERS = 1_400_000;
+const ROUTE_REQUEST_GAP_MS = 300;
+const ROUTE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const ROUTE_CACHE_LIMIT = 200;
+const BORDER_CROSSING_PENALTY_SECONDS = 1_000_000;
+const VALHALLA_MAX_DISTANCE_ERROR = 154;
+const VIA_CITIES = [
+    { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
+    { name: 'Thanh Hóa', lat: 19.8067, lng: 105.7852 },
+    { name: 'Vinh', lat: 18.6796, lng: 105.6813 },
+    { name: 'Đồng Hới', lat: 17.4831, lng: 106.6 },
+    { name: 'Huế', lat: 16.4637, lng: 107.5909 },
+    { name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022 },
+    { name: 'Quảng Ngãi', lat: 15.1214, lng: 108.8044 },
+    { name: 'Quy Nhơn', lat: 13.7829, lng: 109.2196 },
+    { name: 'Nha Trang', lat: 12.2388, lng: 109.1967 },
+    { name: 'Phan Thiết', lat: 10.9333, lng: 108.1 },
+    { name: 'TP. Hồ Chí Minh', lat: 10.7769, lng: 106.7009 },
+    { name: 'Cần Thơ', lat: 10.0452, lng: 105.7469 },
+];
+
+const routeHttp = axios.create({
+    timeout: ROUTE_TIMEOUT_MS,
+    headers: { 'User-Agent': env.nominatimUserAgent, 'Content-Type': 'application/json' },
+});
+const routeCache = new Map();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const straightLeg = () => ({ shapes: [], distanceKm: null, durationMinutes: null });
+
+const requestRoadLegs = async (points) => {
+    const { data } = await routeHttp.post(env.valhallaUrl, {
+        locations: points.map(({ lat, lng }) => ({ lat, lon: lng, type: 'break' })),
+        costing: 'auto',
+        costing_options: {
+            auto: { country_crossing_penalty: BORDER_CROSSING_PENALTY_SECONDS, country_crossing_cost: BORDER_CROSSING_PENALTY_SECONDS },
+        },
+        directions_type: 'none',
+    });
+    return data.trip.legs.map((leg) => ({
+        shapes: [leg.shape],
+        distanceKm: leg.summary.length,
+        durationMinutes: Math.round(leg.summary.time / 60),
+    }));
+};
+
+const pickViaCity = (from, to) =>
+    VIA_CITIES.filter((city) => distanceMeters(from, city) < ROUTE_MAX_SPAN_METERS && distanceMeters(city, to) < ROUTE_MAX_SPAN_METERS)
+        .map((city) => ({ city, detour: distanceMeters(from, city) + distanceMeters(city, to) }))
+        .sort((a, b) => a.detour - b.detour)[0]?.city ?? null;
+
+const routeLongLeg = async (from, to) => {
+    const via = pickViaCity(from, to);
+    if (!via) return straightLeg();
+    const [first] = await routeChunk([from, via]);
+    await sleep(ROUTE_REQUEST_GAP_MS);
+    const [second] = await routeChunk([via, to]);
+    if (!first.shapes.length || !second.shapes.length) return straightLeg();
+    return {
+        shapes: [...first.shapes, ...second.shapes],
+        distanceKm: first.distanceKm + second.distanceKm,
+        durationMinutes: first.durationMinutes + second.durationMinutes,
+    };
+};
+
+async function routeChunk(chunk) {
+    try {
+        return await requestRoadLegs(chunk);
+    } catch (error) {
+        if (error.response?.status !== 400) throw error;
+        if (chunk.length === 2) {
+            return [error.response.data?.error_code === VALHALLA_MAX_DISTANCE_ERROR ? await routeLongLeg(chunk[0], chunk[1]) : straightLeg()];
+        }
+    }
+    const legs = [];
+    for (let i = 0; i < chunk.length - 1; i += 1) {
+        await sleep(ROUTE_REQUEST_GAP_MS);
+        legs.push(...(await routeChunk([chunk[i], chunk[i + 1]])));
+    }
+    return legs;
+}
+
+const buildRoadRoute = async (points) => {
+    const legs = [];
+    try {
+        for (const [index, chunk] of chunkPath(points, ROUTE_MAX_LOCATIONS, ROUTE_MAX_SPAN_METERS).entries()) {
+            if (index > 0) await sleep(ROUTE_REQUEST_GAP_MS);
+            legs.push(...(await routeChunk(chunk)));
+        }
+    } catch (error) {
+        console.warn('[mapService] Không tìm được đường đi:', error.message);
+        return { legs: points.slice(1).map(straightLeg), distanceKm: null, durationMinutes: null, degraded: true };
+    }
+    const routed = legs.filter((leg) => leg.shapes.length);
+    return {
+        legs,
+        distanceKm: Math.round(routed.reduce((sum, leg) => sum + leg.distanceKm, 0)),
+        durationMinutes: routed.reduce((sum, leg) => sum + leg.durationMinutes, 0),
+        degraded: false,
+    };
+};
+
+export const getRoadRoute = async (points) => {
+    const key = points.map(({ lat, lng }) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(';');
+    const cached = routeCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.route;
+    const route = buildRoadRoute(points);
+    routeCache.set(key, { route, expires: Date.now() + ROUTE_CACHE_TTL_MS });
+    if (routeCache.size > ROUTE_CACHE_LIMIT) routeCache.delete(routeCache.keys().next().value);
+    const result = await route;
+    if (result.degraded) routeCache.delete(key);
+    return result;
 };

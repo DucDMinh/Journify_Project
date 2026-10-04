@@ -1,63 +1,59 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import L from "leaflet";
-import "leaflet-routing-machine";
-import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
-import { useMap } from "react-leaflet";
+import { Marker, Polyline, Popup, useMap } from "react-leaflet";
+import { shortPlaceName } from "@/lib/format";
+import { decodePolyline, RoadRoute } from "@/utils/map";
 
 interface RoutingMachineProps {
     points: { lat: number; lng: number; name: string }[];
+    route: RoadRoute | null;
+    fallback: boolean;
 }
 
-export default function RoutingMachine({ points }: RoutingMachineProps) {
+type LatLngTuple = [number, number];
+
+const stopIcon = (label: number) =>
+    L.divIcon({
+        className: "",
+        html: `<div class="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-xs font-bold text-white shadow-md">${label}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -14],
+    });
+
+export default function RoutingMachine({ points, route, fallback }: RoutingMachineProps) {
     const map = useMap();
 
+    const roadLines = useMemo(() => (route?.legs ?? []).flatMap((leg) => leg.shapes.map((shape) => decodePolyline(shape))), [route]);
+
+    const gapLines = useMemo(() => {
+        const toTuple = ({ lat, lng }: { lat: number; lng: number }): LatLngTuple => [lat, lng];
+        if (fallback) return [points.map(toTuple)];
+        return (route?.legs ?? []).flatMap((leg, i) => (!leg.shapes.length && points[i + 1] ? [[toTuple(points[i]), toTuple(points[i + 1])]] : []));
+    }, [fallback, route, points]);
+
     useEffect(() => {
-        if (!map || points.length < 2) return;
+        const coordinates: LatLngTuple[] = [...points.map(({ lat, lng }): LatLngTuple => [lat, lng]), ...roadLines.flat()];
+        if (coordinates.length) map.fitBounds(L.latLngBounds(coordinates), { padding: [32, 32] });
+    }, [map, points, roadLines]);
 
-        const waypoints = points.map(p => L.latLng(p.lat, p.lng));
-
-        const routingControl = L.Routing.control({
-            plan: L.Routing.plan(waypoints, {
-                createMarker: (i, waypoint) => {
-                    return L.marker(waypoint.latLng).bindPopup(
-                        `<b>Điểm ${i + 1}</b><br/>${points[i].name}`
-                    );
-                }
-            }),
-            routeWhileDragging: false,
-            addWaypoints: false,
-            showAlternatives: false,
-            fitSelectedRoutes: true,
-            lineOptions: {
-                styles: [{ color: "#0ea5e9", weight: 5 }],
-                extendToWaypoints: true,
-                missingRouteTolerance: 0
-            }
-        }).addTo(map);
-
-        return () => {
-            if (!map || !routingControl) return;
-
-            try {
-                // 1. Xóa các điểm dừng để dọn dẹp layers hiện tại
-                routingControl.getPlan().setWaypoints([]);
-                map.removeControl(routingControl);
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (routingControl as any)._map = {
-                    removeLayer: () => { },
-                    addLayer: () => { },
-                    hasLayer: () => false,
-                    on: () => { },
-                    off: () => { },
-                    getSize: () => ({ x: 0, y: 0 })
-                };
-
-            } catch (error) {
-                console.warn("Lỗi dọn dẹp bản đồ (đã an toàn bỏ qua):", error);
-            }
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [map, JSON.stringify(points)]);
-
-    return null;
+    return (
+        <>
+            {roadLines.map((line, i) => (
+                <Polyline key={`road-${i}`} positions={line} pathOptions={{ color: "#0ea5e9", weight: 5, opacity: 0.85 }} />
+            ))}
+            {gapLines.map((line, i) => (
+                <Polyline key={`gap-${i}`} positions={line} pathOptions={{ color: "#f59e0b", weight: 3, dashArray: "6 8" }} />
+            ))}
+            {points.map((point, i) => (
+                <Marker key={`${i}-${point.lat}-${point.lng}`} position={[point.lat, point.lng]} icon={stopIcon(i + 1)}>
+                    <Popup>
+                        <b>Điểm {i + 1}</b>
+                        <br />
+                        {shortPlaceName(point.name)}
+                    </Popup>
+                </Marker>
+            ))}
+        </>
+    );
 }

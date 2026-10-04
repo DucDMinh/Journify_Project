@@ -29,4 +29,5 @@ export const env = {
         checksumKey: process.env.PAYOS_CHECKSUM_KEY || '',
     },
     nominatimUserAgent: process.env.NOMINATIM_USER_AGENT || 'TravelPlanner/1.0',
+    valhallaUrl: process.env.VALHALLA_URL || 'https://valhalla1.openstreetmap.de/route',
 };

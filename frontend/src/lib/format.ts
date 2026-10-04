@@ -28,6 +28,17 @@ export const formatPhone = (value?: string | number | null) => {
     return /^\d{9}$/.test(text) && !text.startsWith("0") ? `0${text}` : text;
 };
 
+export const formatDistanceKm = (km?: number | null) => (km == null ? "" : `${vndFormatter.format(Math.round(km))} km`);
+
+export const formatDuration = (minutes?: number | null) => {
+    if (minutes == null) return "";
+    const total = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(total / 60);
+    const rest = total % 60;
+    if (!hours) return `${rest} phút`;
+    return rest ? `${hours} giờ ${rest} phút` : `${hours} giờ`;
+};
+
 export const PHONE_PATTERN = /^(0|\+84)\d{9,10}$/;
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -1,8 +1,9 @@
-import { geocode, reverseGeocode, reverseGeocodeProvince, extractGoogleMapsPreview } from '../services/mapService.js';
+import { geocode, reverseGeocode, reverseGeocodeProvince, extractGoogleMapsPreview, getRoadRoute } from '../services/mapService.js';
 import { optimizeDay } from '../services/routeOptimizer.js';
 import { ok } from '../helpers/response.js';
 
 const MAX_ROUTE_POINTS = 50;
+const MAX_ROAD_ROUTE_POINTS = 120;
 
 const parseCoords = (ctx) => ({ lat: parseFloat(ctx.query.lat), lng: parseFloat(ctx.query.lng) });
 
@@ -22,6 +23,22 @@ export const extractMap = async (ctx) => {
     const { url } = ctx.query;
     ctx.assert(typeof url === 'string' && url, 400, 'Thiếu URL');
     ok(ctx, await extractGoogleMapsPreview(url));
+};
+
+export const roadRoute = async (ctx) => {
+    const { points } = ctx.request.body ?? {};
+    ctx.assert(
+        Array.isArray(points) && points.length >= 2 && points.length <= MAX_ROAD_ROUTE_POINTS,
+        400,
+        `Cần từ 2 đến ${MAX_ROAD_ROUTE_POINTS} điểm để vẽ đường đi`,
+    );
+    const parsed = points.map((point) => ({ lat: Number(point?.lat), lng: Number(point?.lng) }));
+    ctx.assert(
+        parsed.every(({ lat, lng }) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180),
+        400,
+        'Tọa độ không hợp lệ',
+    );
+    ok(ctx, await getRoadRoute(parsed));
 };
 
 export const optimizeRoute = async (ctx) => {
