@@ -1,0 +1,79 @@
+{
+    "way/196896036": {
+        "address": "Tây Nha Trang, Nha Trang, Khánh Hoà",
+        "description": "Chùa Long Sơn là một ngôi chùa Phật giáo ở thành phố Nha Trang, vùng duyên hải Nam Trung Bộ. Đây được xem là một trong những điểm tham quan chính của thành phố, cùng với chùa Hải Đức."
+    },
+    "node/14096883184": {
+        "name": "Phố Đường Tàu",
+        "description": "Phố Đường Tàu là đoạn đường ray hẹp ở Hà Nội, nơi mỗi ngày có vài chuyến tàu hỏa chạy sát nhà dân hai bên, thân tàu chiếm gần hết bề ngang con phố. Đoạn đường ray nằm dọc các phố Điện Biên Phủ và Phùng Hưng, gần ga Hà Nội, được người Pháp xây dựng từ năm 1902."
+    },
+    "node/11161070775": {
+        "name": "Cầu Rồng",
+        "description": "Cầu Rồng là cây cầu thép kết hợp kết cấu vòm, dầm và dây, mô phỏng hình con rồng vượt sông Hàn ở Đà Nẵng. Đây là cây cầu thép hình rồng lớn nhất thế giới."
+    },
+    "node/14226656801": {
+        "name": "Hệ thống hang Tú Làn",
+        "description": "Hệ thống hang Tú Làn nằm bên dòng Rao Nan ở xã Tân Hóa, huyện Minh Hóa, tỉnh Quảng Bình cũ (nay thuộc tỉnh Quảng Trị), cách Vườn quốc gia Phong Nha – Kẻ Bàng khoảng 70 km về phía tây bắc."
+    },
+    "way/1170979640": {
+        "description": "Chùa Báo Quốc là một ngôi chùa Phật giáo ở cố đô Huế, từng là một trong ba quốc tự của Huế dưới thời nhà Nguyễn. Chùa nằm trên đường Báo Quốc, phường Đúc cũ, thành phố Huế."
+    },
+    "way/1252774078": {
+        "description": "Phi Long Thần Tốc (Dragon's Run) là tàu lượn siêu tốc bằng thép do hãng Bolliger & Mabillard (Thụy Sĩ) chế tạo, đặt tại công viên Dragon Park Hạ Long. Tàu lượn được chuyển về từ công viên Freestyle Music Park ở Myrtle Beach (Nam Carolina, Mỹ), nơi nó từng vận hành với tên Time Machine; trước đó, tàu lượn mở cửa lần đầu ngày 15/4/2008 với tên Led Zeppelin: The Ride tại Hard Rock Park."
+    },
+    "node/10635540903": {
+        "name": "Tượng đài Gherman Titov",
+        "address": "Đảo Ti Tốp, Vịnh Hạ Long, Quảng Ninh",
+        "description": "Tượng đài nhà du hành vũ trụ Gherman Titov được dựng năm 2015 nhân kỷ niệm 80 năm ngày sinh của ông, đặt trên hòn đảo mang tên Ti Tốp ở tỉnh Quảng Ninh. Sáng kiến dựng tượng thuộc về Hội hữu nghị Nga – Việt và Hội hữu nghị Việt – Nga."
+    },
+    "relation/11598234": {
+        "description": "Đảo Phú Quý là hòn đảo trên Biển Đông thuộc chủ quyền Việt Nam, về hành chính là đặc khu Phú Quý, tỉnh Lâm Đồng. Từ đảo, thành phố Phan Thiết nằm cách 104 km về phía tây bắc, Cam Ranh (Khánh Hòa) cách 150 km về phía bắc, Vũng Tàu cách 200 km về phía tây và Côn Đảo cách 330 km về phía tây nam. Đảo có diện tích khoảng 17,4 km²."
+    },
+    "node/4171787601": {
+        "description": "Địa đạo Bến Dược là một phần của hệ thống địa đạo Củ Chi – mạng lưới đường hầm nối liền nhau ở Củ Chi, Thành phố Hồ Chí Minh. Trong kháng chiến chống Mỹ, nơi đây diễn ra nhiều trận đánh và là căn cứ chỉ huy của Quân Giải phóng trong cuộc Tổng tiến công Tết Mậu Thân 1968; hệ thống hầm được dùng làm nơi trú ẩn, đường liên lạc, tiếp tế, bệnh viện dã chiến, kho lương thực, vũ khí và nơi sinh hoạt của chiến sĩ."
+    },
+    "way/627398358": {
+        "name": "Đền tưởng niệm Bến Dược",
+        "description": "Đền tưởng niệm Bến Dược – Củ Chi là công trình văn hóa lịch sử do Đảng bộ và nhân dân Thành phố Hồ Chí Minh xây dựng, tưởng nhớ những chiến sĩ và đồng bào đã hy sinh trên chiến trường Sài Gòn – Gia Định trong hai cuộc kháng chiến chống Pháp và chống Mỹ. Đền tọa lạc tại ấp Bến Dược, xã Phú Mỹ Hưng, ở cuối khu địa đạo Củ Chi."
+    },
+    "way/1491058619": {
+        "exclude": true
+    },
+    "node/11598796395": {
+        "exclude": true
+    },
+    "node/13119009964": {
+        "exclude": true
+    },
+    "node/1037737078": {
+        "exclude": true
+    },
+    "node/2088919716": {
+        "exclude": true
+    },
+    "node/2088919734": {
+        "exclude": true
+    },
+    "node/2617007574": {
+        "name": "Tượng đài Kazimierz Kwiatkowski"
+    },
+    "relation/20057203": {
+        "name": "Làng chài Cái Bèo"
+    },
+    "node/13260659280": {
+        "name": "Khu chứng tích Sơn Mỹ"
+    },
+    "node/2326969111": {
+        "name": "Chùa Phật Đà"
+    },
+    "way/141912634": {
+        "exclude": true
+    },
+    "node/3887715188": {
+        "name": "Hang Trinh Nữ"
+    },
+    "way/474383101": {
+        "description": "Chùa Phước Lâm là một ngôi chùa cổ ở Hội An, thuộc tỉnh Quảng Nam cũ (nay là thành phố Đà Nẵng).",
+        "wikipedia": null
+    }
+}

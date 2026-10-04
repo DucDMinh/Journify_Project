@@ -1,6 +1,23 @@
 import { BaseRepository, unwrap } from './repo.js';
 import { supabase } from '../config/supabaseClient.js';
 
+const PAGE_SIZE = 1000;
+
+const fetchAllRows = async (buildQuery) => {
+    const rows = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+        const page = unwrap(await buildQuery().range(from, from + PAGE_SIZE - 1));
+        rows.push(...page);
+        if (page.length < PAGE_SIZE) return rows;
+    }
+};
+
+const countBy = (rows) => {
+    const counts = new Map();
+    for (const { province_id } of rows) if (province_id) counts.set(province_id, (counts.get(province_id) ?? 0) + 1);
+    return counts;
+};
+
 class ProvinceRepository extends BaseRepository {
     constructor() {
         super('provinces');
@@ -19,19 +36,20 @@ class ProvinceRepository extends BaseRepository {
     }
 
     async countLocationsByProvince() {
-        const rows = unwrap(await supabase.from('locations').select('province_id'));
-        const counts = new Map();
-        for (const { province_id } of rows) if (province_id) counts.set(province_id, (counts.get(province_id) ?? 0) + 1);
-        return counts;
+        return countBy(await fetchAllRows(() => supabase.from('locations').select('province_id').order('id')));
     }
 
     async countPublicItinerariesByProvince() {
-        const rows = unwrap(
-            await supabase.from('itinerary_provinces').select('province_id, itineraries!inner(share)').eq('itineraries.share', true),
+        return countBy(
+            await fetchAllRows(() =>
+                supabase
+                    .from('itinerary_provinces')
+                    .select('province_id, itineraries!inner(share)')
+                    .eq('itineraries.share', true)
+                    .order('itinerary_id')
+                    .order('province_id'),
+            ),
         );
-        const counts = new Map();
-        for (const { province_id } of rows) if (province_id) counts.set(province_id, (counts.get(province_id) ?? 0) + 1);
-        return counts;
     }
 
     async getAllNames() {

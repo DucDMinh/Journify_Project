@@ -77,9 +77,9 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
 
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-5xl bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[32px] shadow-2xl overflow-hidden z-10 flex flex-col md:flex-row max-h-[85vh]">
-                <div className="md:w-5/12 bg-[var(--bg-bento)] p-6 sm:p-8 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-color)] relative overflow-hidden">
-                    <div className="flex-1 overflow-y-auto pr-2 -mr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[var(--border-color)] hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 [&::-webkit-scrollbar-thumb]:rounded-full pb-2">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-5xl bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[32px] shadow-2xl overflow-y-auto md:overflow-hidden z-10 flex flex-col md:flex-row max-h-[85vh]">
+                <div className="md:w-5/12 shrink-0 md:shrink bg-[var(--bg-bento)] p-6 sm:p-8 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-color)] relative md:overflow-hidden">
+                    <div className="md:flex-1 md:overflow-y-auto md:pr-2 md:-mr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[var(--border-color)] hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 [&::-webkit-scrollbar-thumb]:rounded-full pb-2">
                         <div className="flex items-center justify-between mb-4">
                             <span className="text-xs font-bold uppercase tracking-wider text-[var(--accent-primary)] font-display bg-[var(--bg-card)] px-3 py-1 rounded-full border border-[var(--border-color)] shadow-sm">
                                 {itinerary.days || 1} Ngày Trải Nghiệm
@@ -133,19 +133,19 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                         )}
                     </div>
                 </div>
-                <div className="flex-1 flex flex-col overflow-hidden bg-[var(--bg-paper)]">
+                <div className="shrink-0 md:flex-1 flex flex-col md:overflow-hidden bg-[var(--bg-paper)]">
                     <div className="flex items-center justify-between p-4 sm:p-6 border-b border-[var(--border-color)] bg-[var(--bg-card)] z-10 shadow-sm">
-                        <div className="flex gap-2">
-                            <button onClick={() => setActiveTab("itinerary")} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "itinerary" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
+                        <div className="flex min-w-0 gap-1.5 sm:gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+                            <button onClick={() => setActiveTab("itinerary")} className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 ${activeTab === "itinerary" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
                                 <Map className="w-4 h-4" /> Lịch trình
                             </button>
-                            <button onClick={() => setActiveTab("checklist")} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "checklist" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
+                            <button onClick={() => setActiveTab("checklist")} className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 ${activeTab === "checklist" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
                                 <Luggage className="w-4 h-4" /> Hành trang
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === "checklist" ? "bg-white/20" : "bg-[var(--border-color)]"}`}>
                                     {checklist.filter((c) => c.checked).length}/{checklist.length}
                                 </span>
                             </button>
-                            <button onClick={() => setActiveTab("map")} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "map" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
+                            <button onClick={() => setActiveTab("map")} className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 ${activeTab === "map" ? "bg-[var(--accent-primary)] text-white shadow-md" : "bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-bento)]"}`}>
                                 <MapPin className="w-4 h-4" /> Xem lộ trình
                             </button>
                         </div>
@@ -154,7 +154,7 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+                    <div className="md:flex-1 md:overflow-y-auto p-4 sm:p-8">
                         {activeTab === "itinerary" && (
                             itinerary.itinerary_days && itinerary.itinerary_days.length > 0 ? (
                                 <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-10">

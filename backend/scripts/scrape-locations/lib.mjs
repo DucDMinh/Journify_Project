@@ -24,9 +24,11 @@ export const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / 
 export async function fetchWithRetry(url, options = {}, { retries = 3, backoffMs = 3000, label = url } = {}) {
     let lastError;
     for (let attempt = 1; attempt <= retries; attempt++) {
+        let retryAfterMs = 0;
         try {
             const res = await fetch(url, { ...options, headers: { 'User-Agent': USER_AGENT, ...(options.headers ?? {}) } });
             if (res.status === 429 || res.status >= 500) {
+                retryAfterMs = (Number(res.headers.get('retry-after')) || 0) * 1000;
                 throw new Error(`HTTP ${res.status}`);
             }
             if (!res.ok) throw new Error(`HTTP ${res.status} (không thử lại)`);
@@ -34,7 +36,7 @@ export async function fetchWithRetry(url, options = {}, { retries = 3, backoffMs
         } catch (error) {
             lastError = error;
             if (String(error.message).includes('không thử lại') || attempt === retries) break;
-            const wait = backoffMs * attempt;
+            const wait = Math.max(backoffMs * attempt, retryAfterMs);
             console.warn(`  ! ${label}: ${error.message} -> thử lại sau ${wait / 1000}s (${attempt}/${retries})`);
             await sleep(wait);
         }

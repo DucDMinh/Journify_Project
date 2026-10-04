@@ -1,0 +1,62 @@
+{
+  "file": "E:\\DoAnTotNghiep\\backend\\scripts\\scrape-locations\\output\\locations.preview.json",
+  "startedAt": "2026-10-04T14:43:01.974Z",
+  "inserted": [
+    {
+      "id": "2edaff45-62da-4d50-9052-383c70b1f31d",
+      "osm_id": "node/2326969111",
+      "name": "Chùa Phật Đà · Mạc Cửu, 3 - Bình San, Hà Tiên, An Giang",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124983774-3cef3de5-e8bc-4dcc-b66b-575cca00e3b7.jpg"
+    },
+    {
+      "id": "6180c88f-bf11-4a82-86e6-23c290030412",
+      "osm_id": "way/10703551",
+      "name": "Hòn Thơm · Phú Quốc, An Giang",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124985284-c21fda59-5cdd-4fc4-b23f-615d9fc304af.jpg"
+    },
+    {
+      "id": "6e99bb72-37a5-4d3b-82f4-b9b5116137bb",
+      "osm_id": "node/6298520023",
+      "name": "Vịnh Nha Trang · Nha Trang, Khánh Hoà",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124986676-f6db32f8-6d01-48f3-8408-ca50d8dbe874.jpg"
+    },
+    {
+      "id": "b8346013-98b7-499f-bf15-f91615cf0a78",
+      "osm_id": "way/147536067",
+      "name": "Hòn Tằm · Nha Trang, Khánh Hoà",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124989416-fee113b1-56b2-46f1-833e-0309535a41d2.jpg"
+    },
+    {
+      "id": "c4a1d8ba-ea56-435f-a8e2-dfbe41097141",
+      "osm_id": "node/4730928605",
+      "name": "Động Thiên Cung · Ngọc Châu, Tuần Châu, Quảng Ninh",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124991453-4284ae91-257d-4e39-95dd-f03ba288f56a.jpg"
+    },
+    {
+      "id": "fe298bad-7150-46d1-b3d5-19905380c2b7",
+      "osm_id": "node/3494812595",
+      "name": "Hang Sửng Sốt · Quảng Ninh",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124992976-70cd2551-fddc-487f-9f22-aa6330c3e8b9.jpg"
+    },
+    {
+      "id": "38a8d03b-de29-4d57-a6b7-c0bc658a0a11",
+      "osm_id": "node/3887715188",
+      "name": "Hang Trinh Nữ · Hang Sửng Sốt, Quảng Ninh",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124995060-cc0fc8cb-6776-42aa-b3c4-9a18a3a6e409.jpg"
+    },
+    {
+      "id": "df130dbb-74e2-4c67-9e52-a98362e6f892",
+      "osm_id": "relation/15981181",
+      "name": "Đảo Cô Tô · Đường 9 tháng 5, Đồng Tiến, Quảng Ninh",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124997290-ff2efcef-688a-486b-8617-eff24340dc0b.jpg"
+    },
+    {
+      "id": "578bf346-ed7f-4167-875f-76e807359260",
+      "osm_id": "way/474383101",
+      "name": "Chùa Phước Lâm · Đường Bờ Hồ 1, Hội An Tây, Đà Nẵng",
+      "img": "https://olyoukmspibiafejrezj.supabase.co/storage/v1/object/public/image/locations/1791124999636-a0adcce7-2cf1-4d9e-8b72-9dd45d8a6360.jpg"
+    }
+  ],
+  "skippedImage": [],
+  "finishedAt": "2026-10-04T14:43:20.929Z"
+}

@@ -40,7 +40,20 @@ class LocationRepository extends BaseRepository {
 
     async getByProvincesForAi(provinceIds) {
         if (!provinceIds.length) return [];
-        return unwrap(await this.table().select(AI_LOCATION_FIELDS).in('province_id', provinceIds).limit(AI_MAX_LOCATIONS));
+        const perProvince = Math.ceil(AI_MAX_LOCATIONS / provinceIds.length);
+        const lists = await Promise.all(
+            provinceIds.map(async (provinceId) =>
+                unwrap(
+                    await this.table()
+                        .select(AI_LOCATION_FIELDS)
+                        .eq('province_id', provinceId)
+                        .order('saved_count', { ascending: false })
+                        .order('rating', { ascending: false, nullsFirst: false })
+                        .limit(perProvince),
+                ),
+            ),
+        );
+        return lists.flat();
     }
 
     async searchByKeywordsForAi(keywords, limit = 30) {
