@@ -1,9 +1,9 @@
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { api } from "@/lib/apiClient";
-import { usePayOS } from "@payos/payos-checkout";
+import { usePayOS as createPayOSCheckout } from "@payos/payos-checkout";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Crown, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from 'sonner';
 
 interface PremiumModalProps {
@@ -27,6 +27,7 @@ const plans = [
 const DEFAULT_PLAN_ID = 6;
 const VERIFY_ATTEMPTS = 8;
 const VERIFY_INTERVAL_MS = 2500;
+const PAYOS_ELEMENT_ID = "embedded-payment-container";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -83,7 +84,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
 
     const [payOSConfig, setPayOSConfig] = useState({
         RETURN_URL: window.location.href,
-        ELEMENT_ID: "embedded-payment-container",
+        ELEMENT_ID: PAYOS_ELEMENT_ID,
         CHECKOUT_URL: "",
         embedded: true,
         onSuccess: () => {
@@ -128,11 +129,21 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
         await api.patch(`/orders/${id}`, { status: "CANCEL" }).catch(() => undefined);
     };
 
-    const { open, exit } = usePayOS(payOSConfig);
+    const checkoutRef = useRef<ReturnType<typeof createPayOSCheckout> | null>(null);
+    const closeCheckout = () => {
+        if (document.getElementById(PAYOS_ELEMENT_ID)?.querySelector("iframe")) checkoutRef.current?.exit();
+    };
 
     useEffect(() => {
-        if (payOSConfig.CHECKOUT_URL !== "") open();
-    }, [payOSConfig.CHECKOUT_URL, open]);
+        if (!isOpen || !payOSConfig.CHECKOUT_URL) return;
+        const checkout = createPayOSCheckout(payOSConfig);
+        checkoutRef.current = checkout;
+        checkout.open();
+        return () => {
+            checkoutRef.current = null;
+            if (document.getElementById(PAYOS_ELEMENT_ID)?.querySelector("iframe")) checkout.exit();
+        };
+    }, [isOpen, payOSConfig]);
 
     return message ? (
         <Message message={message} />
@@ -159,7 +170,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                     <div className="absolute -top-32 -right-32 w-64 h-64 bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-gold)] rounded-full blur-3xl opacity-20 pointer-events-none" />
                     <button
                         onClick={() => {
-                            if (isOpen) exit();
+                            if (isOpen) closeCheckout();
                             handleCancelOrder(orderId)
                             onClose();
                         }}
@@ -176,7 +187,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                             </div>
                             <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex-1 min-h-[350px] relative flex items-center justify-center">
                                 <div
-                                    id="embedded-payment-container"
+                                    id={PAYOS_ELEMENT_ID}
                                     className="w-full h-full absolute inset-0"
                                 ></div>
                             </div>
@@ -283,7 +294,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                                     event.preventDefault();
                                     setIsOpen(false);
                                     handleCancelOrder(orderId)
-                                    exit();
+                                    closeCheckout();
                                 }}
                                 className="w-full py-3.5 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-[var(--text-main)] text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition-all mt-auto"
                             >

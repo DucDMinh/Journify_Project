@@ -58,6 +58,7 @@ export const createPremiumPaymentLink = async ({ userId, planId, returnUrl }) =>
         amount: plan.amount,
         order_code: orderCode,
         status: ORDER_STATUS.PENDING,
+        description: `Premium ${plan.months} tháng`,
     });
 
     try {
@@ -92,10 +93,7 @@ export const handlePaymentWebhook = async (body) => {
         return { processed: false, reason: 'amount_mismatch' };
     }
 
-    const granted = await grantPremium(order, {
-        description: payment.description,
-        counterAccountNumber: payment.counterAccountNumber,
-    });
+    const granted = await grantPremium(order, { counterAccountNumber: payment.counterAccountNumber || null });
     if (!granted) return { processed: false, reason: 'already_processed' };
     return { processed: true, orderId: order.id, userId: order.user_id };
 };
@@ -109,10 +107,7 @@ export const verifyOrderPayment = async ({ orderId, user }) => {
         const link = await getPayOS().paymentRequests.get(Number(order.order_code));
         if (link.status === 'PAID' && Number(link.amountPaid) >= Number(order.amount)) {
             const transaction = link.transactions?.at(-1);
-            await grantPremium(order, {
-                description: transaction?.description ?? order.description,
-                counterAccountNumber: transaction?.counterAccountNumber ?? order.counterAccountNumber,
-            });
+            await grantPremium(order, { counterAccountNumber: transaction?.counterAccountNumber || order.counterAccountNumber || null });
         } else if (CLOSED_LINK_STATUSES.has(link.status) && order.status === ORDER_STATUS.PENDING) {
             await orderRepo.update(order.id, { status: ORDER_STATUS.CANCEL });
         }
