@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { AiItineraryResult, Itinerary } from "@/interface";
+import { AiItineraryResult, Itinerary, Province } from "@/interface";
 import { AnimatePresence, motion } from "framer-motion";
 import { CompassIcon, Send, Sparkles, X, Lock, Crown } from "lucide-react";
 import { useState } from "react";
@@ -8,16 +8,29 @@ import { useAuth } from "@/hooks/auth/AuthContext";
 import { toast } from 'sonner';
 import { api } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
+import { DEFAULT_TRIP_IMAGE } from "@/components/common/SafeImage";
+import { saveItineraryCopy } from "@/lib/itinerary";
+import { todayIso } from "@/lib/format";
+
+const addDays = (isoDate: string, days: number) => {
+    const date = new Date(`${isoDate}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+const provinceCover = async (provinceId?: string | null) => {
+    if (!provinceId) return null;
+    const { response, data } = await api.get<Province>(`/provinces/${provinceId}`);
+    return response.ok ? data.data?.image_url ?? null : null;
+};
 
 export function AiPlannerModal({
     onClose,
-    onSuccess,
     notify,
     onOpenPremium
 }: {
     onClose: () => void;
-    onSuccess: (trip: Itinerary) => void;
-    notify: (msg: string, icon: string) => void;
+    notify: (msg: string, icon?: string) => void;
     onOpenPremium?: () => void;
 }) {
     const [prompt, setPrompt] = useState("");
@@ -65,22 +78,23 @@ export function AiPlannerModal({
             const { response, data } = await api.post<AiItineraryResult>('/ai/planner', { prompt: enrichedPrompt, days_count: days });
             clearInterval(interval);
             if (!response.ok || !data.success || !data.data) {
-                onClose()
                 throw new Error(data.message || "Có lỗi xảy ra khi tạo lộ trình AI");
             }
             const rawAiData = data.data;
             const now = Date.now();
+            const startDate = todayIso();
+            const coverImage = await provinceCover(rawAiData.itinerary_provinces?.[0]?.province_id).catch(() => null);
             const hydratedItinerary: Itinerary = {
                 id: `ai-iti-${now}`,
                 title: rawAiData.title || `Lộ trình ${days} ngày: ${prompt}`,
                 summary: rawAiData.summary || "",
                 theme: rawAiData.theme || style,
                 estimated_cost: rawAiData.estimated_cost || 0,
-                start_date: new Date().toISOString(),
-                end_date: new Date(now + days * 86400000).toISOString(),
-                days: days,
-                nights: days > 1 ? days - 1 : 0,
-                image_url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop",
+                start_date: startDate,
+                end_date: addDays(startDate, Math.max(0, (rawAiData.itinerary_days?.length || days) - 1)),
+                days: rawAiData.itinerary_days?.length || days,
+                nights: Math.max(0, (rawAiData.itinerary_days?.length || days) - 1),
+                image_url: coverImage || DEFAULT_TRIP_IMAGE,
                 share: false,
                 user_id: currentUser as any || null,
                 itinerary_provinces: rawAiData.itinerary_provinces?.map((prov: any) => ({
@@ -119,7 +133,6 @@ export function AiPlannerModal({
             notify("Tuyệt vời! Lộ trình AI đã sẵn sàng", "✨");
             setIsGenerating(false);
             setActiveTripDetail(hydratedItinerary);
-            if (onSuccess) onSuccess(hydratedItinerary);
         } catch (error: any) {
             clearInterval(interval);
             setIsGenerating(false);
@@ -130,57 +143,15 @@ export function AiPlannerModal({
 
     const handleCloneTrip = async (iti: Itinerary) => {
         const toastId = toast.loading("Đang lưu lộ trình vào hệ thống...");
-        try {
-            const cleanDays = iti.itinerary_days?.map((day: any) => {
-                const cleanLocations = day.itinerary_locations?.map((loc: any) => ({
-                    location_id: loc.location_id,
-                    sequence_order: loc.sequence_order,
-                    start_time: loc.start_time,
-                    end_time: loc.end_time,
-                    cost: loc.cost,
-                    activity_note: loc.activity_note,
-                    location_name: loc.location_name,
-                    lat: loc.lat,
-                    lng: loc.lng
-                }));
-
-                return {
-                    day_number: day.day_number,
-                    title: day.title,
-                    itinerary_locations: cleanLocations
-                };
-            });
-            const cleanProvinces = iti.itinerary_provinces?.map((prov: any) => ({
-                province_id: prov.province_id
-            })) || [];
-
-            const payload = {
-                title: iti.title,
-                summary: iti.summary,
-                theme: iti.theme,
-                start_date: iti.start_date,
-                end_date: iti.end_date,
-                days: iti.days,
-                nights: iti.nights,
-                estimated_cost: iti.estimated_cost,
-                share: false,
-                itinerary_days: cleanDays,
-                itinerary_provinces: cleanProvinces,
-                user_id: currentUser?.id
-            };
-
-            const { data, response } = await api.post(`/itineraries`, payload);
-
-            if (!response.ok) throw new Error(data?.message || "Lỗi khi lưu lộ trình");
-
-            toast.success(`Đã lưu "${iti.title}" thành công!`, { id: toastId });
-            setActiveTripDetail(null);
-            onClose();
-
-        } catch (err: any) {
-            console.error("Lỗi lưu lộ trình:", err);
-            toast.error(err.message || "Có lỗi xảy ra khi lưu lộ trình", { id: toastId });
+        const result = await saveItineraryCopy(iti);
+        if (!result.ok) {
+            toast.error(result.message, { id: toastId });
+            return;
         }
+        toast.success(`Đã lưu "${iti.title}" vào Lộ trình của tôi!`, { id: toastId });
+        setActiveTripDetail(null);
+        onClose();
+        router.push(result.id ? `/my-itinerary/${result.id}/builder` : "/my-itinerary");
     };
 
     return (

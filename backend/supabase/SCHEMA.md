@@ -117,7 +117,7 @@ hãy chạy `supabase db dump --linked --schema public -f supabase/schema.sql` (
 | status | text | có | PENDING |  |
 | user_id | uuid |  |  | FK -> users.id |
 | amount | real |  | 0 |  |
-| order_code | integer |  |  |  |
+| order_code | bigint |  |  |  |
 | description | text |  |  |  |
 | counterAccountNumber | text |  |  |  |
 

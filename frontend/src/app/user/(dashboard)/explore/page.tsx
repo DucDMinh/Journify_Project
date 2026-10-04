@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
@@ -9,6 +8,8 @@ import { api } from "@/lib/apiClient";
 import { Location, Province, Region, RegionProvince } from "@/interface";
 import { REGION_GRADIENTS, regionCover, useRegions } from "@/hooks/user/useRegions";
 import { useDashboard } from "@/app/user/(dashboard)/layout";
+import SafeImage from "@/components/common/SafeImage";
+import { shortPlaceName } from "@/lib/format";
 
 export default function ExplorePage() {
     return (
@@ -22,7 +23,7 @@ function ExploreContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { regions, isLoading, error } = useRegions();
-    const { setIsCreatingTrip } = useDashboard();
+    const { openCreateTrip } = useDashboard();
     const requestedKey = searchParams.get("region");
     const [selectedProvince, setSelectedProvince] = useState<RegionProvince | null>(null);
 
@@ -37,7 +38,7 @@ function ExploreContent() {
         <div className="min-h-screen bg-[var(--bg-paper)] pb-20">
             <div className="relative h-[300px] overflow-hidden md:h-[360px]">
                 {activeRegion && (
-                    <img key={activeRegion.key} src={regionCover(activeRegion)} alt="" className="h-full w-full object-cover" />
+                    <SafeImage key={activeRegion.key} src={regionCover(activeRegion)} alt="" className="h-full w-full object-cover" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-paper)] via-black/50 to-black/20" />
                 <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
@@ -90,11 +91,7 @@ function ExploreContent() {
                                 onClick={() => setSelectedProvince(province)}
                                 className="group relative h-56 overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] text-left shadow-sm"
                             >
-                                {province.image_url ? (
-                                    <img src={province.image_url} alt={province.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-                                ) : (
-                                    <div className={`h-full w-full bg-gradient-to-br ${REGION_GRADIENTS[activeRegion.key]} opacity-70`} />
-                                )}
+                                <SafeImage src={province.image_url} fallback={regionCover(activeRegion)} alt={province.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
                                 <div className="absolute inset-x-0 bottom-0 p-4 text-white">
                                     <h3 className="text-lg font-bold leading-tight">{province.name}</h3>
@@ -119,8 +116,9 @@ function ExploreContent() {
                         province={selectedProvince}
                         onClose={() => setSelectedProvince(null)}
                         onCreateTrip={() => {
+                            const provinceId = selectedProvince.id;
                             setSelectedProvince(null);
-                            setIsCreatingTrip(true);
+                            openCreateTrip(provinceId);
                         }}
                     />
                 )}
@@ -156,13 +154,9 @@ function ProvinceDrawer({ province, onClose, onCreateTrip }: { province: RegionP
                 className="relative flex h-full w-full max-w-lg flex-col bg-[var(--bg-card)] shadow-2xl"
             >
                 <div className="relative h-48 shrink-0">
-                    {province.image_url ? (
-                        <img src={province.image_url} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                        <div className="h-full w-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-gold)]" />
-                    )}
+                    <SafeImage src={province.image_url} alt="" className="h-full w-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] to-transparent" />
-                    <button onClick={onClose} className="absolute right-4 top-4 rounded-full bg-black/40 p-2 text-white hover:bg-black/60">
+                    <button onClick={onClose} className="absolute right-4 top-4 rounded-full bg-black/40 p-2 text-white hover:bg-black/60" aria-label="Đóng">
                         <X className="h-5 w-5" />
                     </button>
                     <div className="absolute bottom-3 left-5">
@@ -211,15 +205,9 @@ function ProvinceDrawer({ province, onClose, onCreateTrip }: { province: RegionP
                         <ul className="space-y-3">
                             {sorted.map((loc) => (
                                 <li key={loc.id} className="flex items-center gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] p-2.5">
-                                    {loc.img ? (
-                                        <img src={loc.img} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" loading="lazy" />
-                                    ) : (
-                                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[var(--border-color)] text-[var(--text-muted)]">
-                                            <MapPin className="h-5 w-5" />
-                                        </span>
-                                    )}
+                                    <SafeImage src={loc.img} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" loading="lazy" />
                                     <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-semibold text-[var(--text-main)]">{loc.name.split(" · ")[0]}</p>
+                                        <p className="truncate text-sm font-semibold text-[var(--text-main)]" title={loc.name}>{shortPlaceName(loc.name)}</p>
                                         <p className="truncate text-xs text-[var(--text-muted)]">
                                             {loc.difficulty_level ? `Độ khó: ${loc.difficulty_level} · ` : ""}
                                             {loc.saved_count ?? 0} lượt lưu

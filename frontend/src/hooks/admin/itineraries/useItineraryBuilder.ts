@@ -37,11 +37,11 @@ const DEFAULT_START_TIME = "08:00";
 const DEFAULT_END_TIME = "10:00";
 const HIGHLIGHT_CLASSES = ["ring-4", "ring-brand-500", "border-brand-500", "bg-brand-50", "dark:bg-brand-900/20"];
 
-const countDays = (start?: string, end?: string) => {
+const countDays = (start?: string | null, end?: string | null) => {
     if (!start || !end) return null;
     const diff = new Date(end).getTime() - new Date(start).getTime();
     if (Number.isNaN(diff) || diff < 0) return null;
-    return Math.ceil(diff / 86_400_000) + 1;
+    return Math.round(diff / 86_400_000) + 1;
 };
 
 const makeEmptyDay = (dayNumber: number): Itinerary_days => ({
@@ -51,7 +51,7 @@ const makeEmptyDay = (dayNumber: number): Itinerary_days => ({
     itinerary_locations: [],
 });
 
-const resizeDays = (days: Itinerary_days[], start?: string, end?: string) => {
+const resizeDays = (days: Itinerary_days[], start?: string | null, end?: string | null) => {
     const target = countDays(start, end);
     if (target === null || target === days.length) return days;
     if (target < days.length) return days.slice(0, target);
@@ -59,19 +59,30 @@ const resizeDays = (days: Itinerary_days[], start?: string, end?: string) => {
     return [...days, ...extra];
 };
 
+const toTimeInput = (value?: string | null) => (value ? value.slice(0, 5) : "");
+
 const normalizeLoadedDays = (itinerary?: Partial<Itinerary>): Itinerary_days[] => {
     const loaded = itinerary?.itinerary_days;
     if (!loaded?.length) return resizeDays([], itinerary?.start_date, itinerary?.end_date);
-    return loaded.map((day) => ({
-        ...day,
-        itinerary_locations: (day.itinerary_locations ?? []).map((loc) => ({
-            ...loc,
-            location_id: loc.locations?.id ?? loc.location_id,
-            location_name: loc.locations?.name ?? loc.location_name,
-            lat: Number(loc.lat ?? 0),
-            lng: Number(loc.lng ?? 0),
-        })),
-    }));
+    return [...loaded]
+        .sort((a, b) => a.day_number - b.day_number)
+        .map((day) => ({
+            ...day,
+            title: day.title || `Ngày ${day.day_number}`,
+            itinerary_locations: [...(day.itinerary_locations ?? [])]
+                .sort((a, b) => a.sequence_order - b.sequence_order)
+                .map((loc) => ({
+                    ...loc,
+                    location_id: loc.locations?.id ?? loc.location_id,
+                    location_name: loc.location_name || loc.locations?.name || "",
+                    lat: Number(loc.lat ?? 0),
+                    lng: Number(loc.lng ?? 0),
+                    start_time: toTimeInput(loc.start_time),
+                    end_time: toTimeInput(loc.end_time),
+                    cost: Number(loc.cost) || 0,
+                    activity_note: loc.activity_note ?? "",
+                })),
+        }));
 };
 
 const reindex = (locations: Itinerary_locations[]) =>
@@ -117,6 +128,7 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
     const [activeDragLoc, setActiveDragLoc] = useState<Location | null>(null);
     const [isMapModalOpen, setIsMapModalOpen] = useState(false);
     const [optimizingDayId, setOptimizingDayId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [syncKey, setSyncKey] = useState({
         id: currentItinerary?.id,
@@ -141,6 +153,8 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
             (total, day) => total + day.itinerary_locations.reduce((sum, loc) => sum + (Number(loc.cost) || 0), 0),
             0,
         );
+
+    const handleUpdateDayTitle = (dayId: string, title: string) => updateDay(dayId, (day) => ({ ...day, title }));
 
     const handleUpdateActivity: UpdateActivityFn = (dayId, activityId, fieldOrPatch, value) => {
         const patch: ActivityPatch = typeof fieldOrPatch === "object" ? fieldOrPatch : { [fieldOrPatch]: value };
@@ -264,32 +278,54 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
     };
 
     const handleAddItinerary = async () => {
-        const imageUrl = currentItinerary?.image_url || selectedProvinces[0]?.image_url || undefined;
+        if (!currentItinerary?.title?.trim()) {
+            toast.error("Vui lòng nhập tên lộ trình trước khi lưu");
+            return false;
+        }
+        const tripDays = days.length || countDays(currentItinerary.start_date, currentItinerary.end_date) || currentItinerary.days || 1;
+        const activityCost = calculateTotalCost();
+        const currentEstimate = Number(currentItinerary.estimated_cost) || 0;
         const payload = {
-            title: currentItinerary?.title,
-            theme: currentItinerary?.theme,
-            summary: currentItinerary?.summary,
-            start_date: currentItinerary?.start_date,
-            end_date: currentItinerary?.end_date,
-            nights: currentItinerary?.nights,
-            days: currentItinerary?.days,
-            estimated_cost: calculateTotalCost(),
-            share: currentItinerary?.share ?? false,
-            image_url: imageUrl,
-            itinerary_days: days.length > 0 ? days : undefined,
+            title: currentItinerary.title.trim(),
+            theme: currentItinerary.theme || null,
+            summary: currentItinerary.summary || null,
+            start_date: currentItinerary.start_date || null,
+            end_date: currentItinerary.end_date || null,
+            days: tripDays,
+            nights: Math.max(0, tripDays - 1),
+            estimated_cost: Math.max(currentEstimate, activityCost),
+            share: currentItinerary.share ?? false,
+            image_url: currentItinerary.image_url || selectedProvinces[0]?.image_url || null,
+            itinerary_days: days.map((day, index) => ({
+                ...day,
+                day_number: index + 1,
+                title: day.title?.trim() || `Ngày ${index + 1}`,
+                itinerary_locations: day.itinerary_locations.map((loc, order) => ({
+                    ...loc,
+                    location_id: loc.location_id || null,
+                    start_time: loc.start_time || null,
+                    end_time: loc.end_time || null,
+                    sequence_order: order + 1,
+                })),
+            })),
             itinerary_provinces: selectedProvinces.map((prov) => ({ province_id: prov.id })),
         };
 
+        setIsSaving(true);
         const toastId = toast.loading("Đang lưu lộ trình...");
         try {
-            const { response, data } = currentItinerary?.id
+            const { response, data } = currentItinerary.id
                 ? await api.patch(`/itineraries/${currentItinerary.id}`, payload)
                 : await api.post("/itineraries", payload);
             if (!response.ok) throw new Error(data.message || "Lỗi khi lưu lịch trình");
             toast.success("Lưu lộ trình thành công!", { id: toastId });
             setStep("SETUP");
+            return true;
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Có lỗi xảy ra khi lưu!", { id: toastId });
+            return false;
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -303,6 +339,8 @@ export const useItineraryBuilder = (props: BuilderScreenProp) => {
         handleDragStart,
         handleDragEnd,
         handleAddItinerary,
+        isSaving,
+        handleUpdateDayTitle,
         handleUpdateActivity,
         handleAddActivity,
         handleRemoveActivity,

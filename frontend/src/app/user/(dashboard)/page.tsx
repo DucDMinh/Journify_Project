@@ -1,18 +1,12 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, X, Award } from "lucide-react";
-import { Toaster, toast } from 'sonner';
+import { AnimatePresence } from "framer-motion";
+import { Sparkles, Award } from "lucide-react";
+import { toast } from 'sonner';
 import confetti from "canvas-confetti";
-import { Itinerary, Location, User } from "@/interface";
+import { Itinerary, Location } from "@/interface";
 import { api } from "@/lib/apiClient";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { UserBanner } from "@/components/user/HomePage/UserBanner";
 import { TrendingItinerary } from "@/components/user/HomePage/TrendingItinerary";
@@ -22,8 +16,16 @@ import { WishlistPreview } from "@/components/user/HomePage/WishlistPreview";
 import { TravelTips } from "@/components/user/HomePage/TravelTips";
 import { useDashboard } from "@/app/user/(dashboard)/layout";
 import { useRouter } from "next/navigation";
-import { PremiumModal } from "@/components/payment/PremiumModal";
-import { AiPlannerModal } from "@/components/modals/user/AiPlannerModal";
+import { cloneItinerary } from "@/lib/itinerary";
+
+const readCookie = (name: string) => {
+    const match = document.cookie.split("; ").find((part) => part.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+};
+
+const clearCookie = (name: string) => {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+};
 
 function triggerConfetti() {
     confetti({
@@ -35,292 +37,188 @@ function triggerConfetti() {
 }
 
 export default function JournifyUserDashboard() {
-    const [theme, setTheme] = useState<"day" | "night">("day");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [activeNav, setActiveNav] = useState("dashboard");
-    const [itineraries, setItineraries] = useState<Itinerary[]>([]);
     const [trendingItineraries, setTrendingItineraries] = useState<Itinerary[]>([]);
+    const [isTrendingLoading, setIsTrendingLoading] = useState(true);
+    const [myItineraries, setMyItineraries] = useState<Itinerary[] | null>(null);
     const [wishlist, setWishlist] = useState<Location[]>([]);
     const [activeTripDetail, setActiveTripDetail] = useState<Itinerary | null>(null);
-    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
-    const [isCreatingTrip, setIsCreatingTrip] = useState(false);
     const router = useRouter();
-    const { notify } = useDashboard();
+    const { notify, openAiPlanner } = useDashboard();
     const { user: currentUser } = useAuth();
+
     useEffect(() => {
-        let currentToastId: string | undefined;
-
-        const getCookie = (name: string) => {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop()?.split(';').shift();
-            return null;
-        };
-
-        const errorCookie = getCookie('toast_error');
-        const clearStorageCookie = getCookie('clear_storage');
-
-        if (clearStorageCookie || errorCookie) {
-            localStorage.removeItem('userData');
-            document.cookie = "clear_storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        const errorCookie = readCookie("toast_error");
+        if (readCookie("clear_storage") || errorCookie) {
+            localStorage.removeItem("userData");
+            clearCookie("clear_storage");
         }
-
         if (errorCookie) {
-            toast.error(
-                errorCookie === "TOKEN_EXPIRED"
-                    ? "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại!"
-                    : "Vui lòng đăng nhập để tiếp tục."
-            );
-            document.cookie = "toast_error=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            toast.error(errorCookie === "TOKEN_EXPIRED" ? "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại!" : "Vui lòng đăng nhập để tiếp tục.");
+            clearCookie("toast_error");
         }
-
-        return;
-    }, []);
-    const fetchItineraries = async () => {
-        try {
-            const { data, response } = await api.get<Itinerary[]>('/itineraries?trending=weekly');
-            if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu");
-            const itineraries_data: Itinerary[] = data.data || [];
-            setItineraries(itineraries_data);
-            const trending = itineraries_data.filter(i => i.share).slice(0, 3);
-            setTrendingItineraries(trending.length > 0 ? trending : itineraries_data.slice(0, 5));
-        } catch (error: any) {
-            notify(error.message || "Không thể tải dữ liệu", "⚠️");
-        }
-    };
-    const fetchFavLocations = async () => {
-        try {
-            const { data, response } = await api.get<Location[]>('/locations?trending=true&limit=4');
-            if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu");
-            const favor_locations: Location[] = data.data || [];
-            setWishlist(favor_locations);
-        } catch (error: any) {
-            notify(error.message || "Không thể tải dữ liệu", "⚠️");
-        }
-    }
-
-    useEffect(() => {
-        fetchItineraries();
-        fetchFavLocations()
     }, []);
 
     useEffect(() => {
-        document.documentElement.classList.toggle("theme-night", theme === "night");
-    }, [theme]);
+        let ignore = false;
+        api.get<Itinerary[]>("/itineraries?trending=weekly")
+            .then(({ data, response }) => {
+                if (ignore) return;
+                if (!response.ok) throw new Error(data.message || "Không tải được lộ trình nổi bật");
+                setTrendingItineraries(data.data ?? []);
+            })
+            .catch((error: unknown) => !ignore && notify(error instanceof Error ? error.message : "Không thể tải dữ liệu", "⚠️"))
+            .finally(() => !ignore && setIsTrendingLoading(false));
+        api.get<Location[]>("/locations?trending=true&limit=4")
+            .then(({ data, response }) => {
+                if (!ignore && response.ok) setWishlist(data.data ?? []);
+            })
+            .catch(() => undefined);
+        return () => {
+            ignore = true;
+        };
+    }, [notify]);
 
-    const handleCloneTrip = async (iti: Itinerary) => {
-        const toastId = toast.loading("Đang clone...");
-        try {
-            const { data: responseData, response: full_response } = await api.get<Itinerary>(`/itineraries/${iti.id}`);
-            if (!full_response.ok || !responseData.data) throw new Error(responseData.message || "Lỗi khi lấy dữ liệu lộ trình");
-            const full_iti = responseData.data;
-            const {
-                id,
-                created_at,
-                user_id,
-                ...restItinerary
-            } = full_iti;
-            const cleanDays = restItinerary.itinerary_days?.map((day: any) => {
-                const { id, itinerary_id, ...restDay } = day;
-                const cleanLocations = restDay.itinerary_locations?.map((loc: any) => {
-                    const { id, itinerary_day_id, ...restLoc } = loc;
-                    return restLoc;
-                });
-                return { ...restDay, itinerary_locations: cleanLocations };
-            });
-            const payload = {
-                ...restItinerary,
-                itinerary_days: cleanDays,
-                title: `Bản sao - ${full_iti.title}`,
-                share: false,
-                user_id: currentUser?.id || "",
-                cloned_from_id: full_iti.id
-            };
-            const { data, response } = await api.post(`/itineraries`, payload);
-            if (!response.ok) throw new Error(data.message || "Lỗi khi clone lộ trình");
-            toast.success(`Đã lưu "${full_iti.title}" vào sổ tay!`, { id: toastId });
-            triggerConfetti();
-        } catch (err: any) {
-            console.error("Lỗi clone:", err);
-            toast.error(err.message || "Có lỗi xảy ra khi clone lộ trình", { id: toastId });
+    useEffect(() => {
+        if (!currentUser) return;
+        let ignore = false;
+        api.get<Itinerary[]>("/itineraries/me")
+            .then(({ data, response }) => {
+                if (!ignore && response.ok) setMyItineraries(data.data ?? []);
+            })
+            .catch(() => undefined);
+        return () => {
+            ignore = true;
+        };
+    }, [currentUser]);
+
+    const handleCloneTrip = async (trip: Itinerary) => {
+        if (!currentUser) {
+            toast.error("Vui lòng đăng nhập để lưu lộ trình");
+            router.push("/auth/signin?next=/");
+            return;
         }
+        const toastId = toast.loading("Đang lưu lộ trình vào sổ tay...");
+        const result = await cloneItinerary(trip.id);
+        if (!result.ok) {
+            toast.error(result.message, { id: toastId });
+            return;
+        }
+        toast.success(`Đã lưu "${trip.title}" vào Lộ trình của tôi`, {
+            id: toastId,
+            action: { label: "Xem", onClick: () => router.push("/my-itinerary") },
+        });
+        triggerConfetti();
+        api.get<Itinerary[]>("/itineraries/me").then(({ data, response }) => response.ok && setMyItineraries(data.data ?? []));
     };
 
     const handleViewDetailItinerary = async (id: string) => {
-        const toastId = toast.loading("...");
-        try {
-            const { data, response } = await api.get<Itinerary>(`/itineraries/${id}`)
-            if (!response.ok || !data.data) throw new Error(data.message || "Lỗi khi lấy dữ liệu lộ trình");
-            setActiveTripDetail(data.data)
-            toast.success("ok", { id: toastId })
-        } catch (err: any) {
-            console.error("Lỗi clone:", err);
-            toast.error(err.message || "Có lỗi xảy ra khi clone lộ trình", { id: toastId });
+        const { data, response } = await api.get<Itinerary>(`/itineraries/${id}`);
+        if (!response.ok || !data.data) {
+            toast.error(data.message || "Không tải được chi tiết lộ trình");
+            return;
         }
-    }
+        setActiveTripDetail(data.data);
+    };
+
     const personalStats = useMemo(() => {
+        const trips = myItineraries ?? [];
         return {
-            totalTrips: itineraries.length,
-            totalWishlist: wishlist.length,
-            totalCloned: itineraries.filter(i => i.title.includes("Bản sao")).length,
-            totalPlaces: itineraries.reduce((acc, i) => acc + (i.itinerary_days?.reduce((a, d) => a + d.itinerary_locations.length, 0) || 0), 0),
+            totalTrips: trips.length,
+            publicTrips: trips.filter((trip) => trip.share).length,
+            totalCloned: trips.filter((trip) => trip.cloned_from_id).length,
+            totalPlaces: trips.reduce(
+                (sum, trip) => sum + (trip.itinerary_days ?? []).reduce((acc, day) => acc + (day.itinerary_locations?.length ?? 0), 0),
+                0,
+            ),
         };
-    }, [itineraries, wishlist]);
+    }, [myItineraries]);
+
+    const statRows = [
+        { label: "Lộ trình đã lưu", value: personalStats.totalTrips },
+        { label: "Đang chia sẻ công khai", value: personalStats.publicTrips },
+        { label: "Lộ trình đã clone", value: personalStats.totalCloned },
+        { label: "Hoạt động đã lên lịch", value: personalStats.totalPlaces },
+    ];
 
     return (
         <div className="min-h-screen bg-[var(--bg-paper)] text-[var(--text-main)] transition-colors selection:bg-[var(--accent-primary)] selection:text-white">
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 pb-20 md:pb-10">
-                {activeNav === "dashboard" && (
-                    <div className="space-y-12 md:space-y-16">
-                        <UserBanner
-                            currentUser={currentUser}
-                            searchQuery={searchQuery}
-                            setSearchQuery={setSearchQuery}
-                            setIsAiModalOpen={setIsAiModalOpen}
-                        />
-                        <div>
-                            <TrendingItinerary
-                                trendingItineraries={trendingItineraries}
-                                setActiveTripDetail={setActiveTripDetail}
-                                handleViewDetailItinerary={handleViewDetailItinerary}
-                                handleCloneTrip={handleCloneTrip}
-                                setActiveNav={setActiveNav}
-                            />
-                        </div>
-                        <RegionExplore />
-                        <TravelTips />
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 md:py-10 lg:px-8">
+                <div className="space-y-12 md:space-y-16">
+                    <UserBanner currentUser={currentUser} onOpenAiPlanner={openAiPlanner} />
+                    <TrendingItinerary
+                        trendingItineraries={trendingItineraries}
+                        isLoading={isTrendingLoading}
+                        handleViewDetailItinerary={handleViewDetailItinerary}
+                        handleCloneTrip={handleCloneTrip}
+                    />
+                    <RegionExplore />
+                    <TravelTips />
 
-                        {/* Thống kê cá nhân & Wishlist nhỏ */}
-                        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Thống kê nhẹ nhàng */}
-                            <div className="lg:col-span-1 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-6 shadow-sm">
-                                <h3 className="font-display text-lg font-bold mb-4 flex items-center gap-2">
-                                    <Award className="w-5 h-5 text-[var(--accent-gold)]" /> Hành trình của bạn
-                                </h3>
-                                {currentUser ? (
-                                    <>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-[var(--text-muted)]">Lộ trình đã lưu</span>
-                                                <span className="font-bold text-lg">{personalStats.totalTrips}</span>
+                    <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 shadow-sm lg:col-span-1">
+                            <h3 className="font-display mb-4 flex items-center gap-2 text-lg font-bold">
+                                <Award className="h-5 w-5 text-[var(--accent-gold)]" /> Hành trình của bạn
+                            </h3>
+                            {currentUser ? (
+                                <>
+                                    <div className="space-y-4">
+                                        {statRows.map((row) => (
+                                            <div key={row.label} className="flex items-center justify-between">
+                                                <span className="text-sm text-[var(--text-muted)]">{row.label}</span>
+                                                {myItineraries === null ? (
+                                                    <span className="h-5 w-8 animate-pulse rounded bg-[var(--border-color)]" />
+                                                ) : (
+                                                    <span className="text-lg font-bold">{row.value}</span>
+                                                )}
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-[var(--text-muted)]">Điểm yêu thích</span>
-                                                <span className="font-bold text-lg">{personalStats.totalWishlist}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-[var(--text-muted)]">Đã clone</span>
-                                                <span className="font-bold text-lg">{personalStats.totalCloned}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-[var(--text-muted)]">Địa điểm đã thêm</span>
-                                                <span className="font-bold text-lg">{personalStats.totalPlaces}</span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => router.push('/my-itinerary')}
-                                            className="mt-6 w-full py-2.5 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm font-bold hover:bg-[var(--accent-primary)] hover:text-white transition"
-                                        >
-                                            Quản lý lộ trình
-                                        </button>
-                                    </>
-                                ) : (
-                                    <div className="text-center py-6 text-[var(--text-muted)]">
-                                        <Award className="w-8 h-8 mx-auto opacity-30 mb-2" />
-                                        <p className="text-sm">Đăng nhập để xem thống kê cá nhân.</p>
+                                        ))}
                                     </div>
-                                )}
-                            </div>
-                            <WishlistPreview wishlist={wishlist} setIsAiModalOpen={setIsAiModalOpen} />
-                        </section>
-                        <section className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[var(--accent-primary)]/10 to-[var(--accent-gold)]/10 p-8 md:p-10 border border-[var(--border-color)] shadow-sm">
-                            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                                <div className="flex-1">
-                                    <h2 className="font-display text-2xl font-bold flex items-center gap-2 mb-2">
-                                        <Sparkles className="w-6 h-6 text-[var(--accent-gold)]" /> Bạn chưa có ý tưởng?
-                                    </h2>
-                                    <p className="text-sm text-[var(--text-muted)] max-w-md">
-                                        Hãy để AI tạo lộ trình cá nhân hóa dựa trên sở thích, ngân sách và thời gian của bạn chỉ trong vài giây.
-                                    </p>
+                                    <button
+                                        onClick={() => router.push('/my-itinerary')}
+                                        className="mt-6 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] py-2.5 text-sm font-bold transition hover:bg-[var(--accent-primary)] hover:text-white"
+                                    >
+                                        Quản lý lộ trình
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="py-6 text-center text-[var(--text-muted)]">
+                                    <Award className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                                    <p className="text-sm">Đăng nhập để xem thống kê cá nhân.</p>
                                 </div>
-                                <button
-                                    onClick={() => setIsAiModalOpen(true)}
-                                    className="px-6 py-3 rounded-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-gold)] text-white font-bold shadow-lg hover:opacity-90 transition whitespace-nowrap"
-                                >
-                                    Tạo lộ trình với AI
-                                </button>
+                            )}
+                        </div>
+                        <WishlistPreview wishlist={wishlist} onOpenAiPlanner={openAiPlanner} />
+                    </section>
+                    <section className="relative overflow-hidden rounded-3xl border border-[var(--border-color)] bg-gradient-to-r from-[var(--accent-primary)]/10 to-[var(--accent-gold)]/10 p-8 shadow-sm md:p-10">
+                        <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
+                            <div className="flex-1">
+                                <h2 className="font-display mb-2 flex items-center gap-2 text-2xl font-bold">
+                                    <Sparkles className="h-6 w-6 text-[var(--accent-gold)]" /> Bạn chưa có ý tưởng?
+                                </h2>
+                                <p className="max-w-md text-sm text-[var(--text-muted)]">
+                                    Hãy để AI tạo lộ trình cá nhân hóa dựa trên sở thích, ngân sách và thời gian của bạn chỉ trong vài giây.
+                                </p>
                             </div>
-                        </section>
-                    </div>
-                )}
-            </main>
-            <AnimatePresence>
-                {isAiModalOpen && (
-                    <AiPlannerModal
-                        onClose={() => setIsAiModalOpen(false)}
-                        onSuccess={(newTrip) => {
-                        }}
-                        onOpenPremium={() => setIsPaymentModalOpen(true)}
-                        notify={notify}
-                    />
-                )}
-            </AnimatePresence>
-            <AnimatePresence>
-                {isPaymentModalOpen && (
-                    <PremiumModal
-                        onClose={() => setIsPaymentModalOpen(false)}
-                    />
-                )}
-            </AnimatePresence>
+                            <button
+                                onClick={openAiPlanner}
+                                className="whitespace-nowrap rounded-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-gold)] px-6 py-3 font-bold text-white shadow-lg transition hover:opacity-90"
+                            >
+                                Tạo lộ trình với AI
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </div>
             <AnimatePresence>
                 {activeTripDetail && (
-                    <TripDetailModal2 currentUser={currentUser} itinerary={activeTripDetail} onClose={() => setActiveTripDetail(null)} onClone={() => handleCloneTrip(activeTripDetail)} />
+                    <TripDetailModal2
+                        currentUser={currentUser}
+                        itinerary={activeTripDetail}
+                        onClose={() => setActiveTripDetail(null)}
+                        onClone={() => handleCloneTrip(activeTripDetail)}
+                    />
                 )}
             </AnimatePresence>
-            <AnimatePresence>
-                {isCreatingTrip && (
-                    <CreateTripModal notify={notify} currentUser={currentUser} onClose={() => setIsCreatingTrip(false)} onSuccess={(trip) => { setItineraries([trip, ...itineraries]); setIsCreatingTrip(false); notify("Đã tạo lộ trình mới thành công!", "success"); }} />
-                )}
-            </AnimatePresence>
-        </div>
-    );
-}
-
-function CreateTripModal({ onClose, onSuccess, currentUser, notify }: { onClose: () => void; onSuccess: (trip: Itinerary) => void; currentUser: User | null; notify: (message: string, type: string) => void }) {
-    const [title, setTitle] = useState("");
-    const [destination, setDestination] = useState("");
-    const [days, setDays] = useState(3);
-    const [budget, setBudget] = useState(3000000);
-    const [startDate, setStartDate] = useState<Date | null>(new Date());
-    const [theme, setTheme] = useState("Khám phá");
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!title.trim() || !destination.trim()) { notify("Vui lòng điền đầy đủ thông tin", "⚠️"); return; }
-        const newTrip: Itinerary = {
-            id: `manual-${Date.now()}`, title, summary: `Lộ trình ${days} ngày tại ${destination}`, start_date: startDate?.toISOString() || new Date().toISOString(), end_date: startDate ? new Date(startDate.getTime() + days * 86400000).toISOString() : new Date(Date.now() + days * 86400000).toISOString(), theme: theme, days: days, nights: days - 1, estimated_cost: budget, image_url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop", share: false, user_id: currentUser ? { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar } : null, itinerary_provinces: [{ provinces: { name: destination, id: "" } }], itinerary_days: []
-        };
-        onSuccess(newTrip);
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg bg-[var(--bg-card)] border border-[var(--border-color)] rounded-3xl p-6 shadow-2xl z-10">
-                <div className="flex items-center justify-between mb-5"><h3 className="font-display text-xl font-bold">Tạo lộ trình mới</h3><button onClick={onClose} className="p-1.5 rounded-full hover:bg-[var(--bg-paper)] text-[var(--text-muted)]"><X className="w-5 h-5" /></button></div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Tên lộ trình *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]" required /></div>
-                    <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Điểm đến *</label><input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]" required /></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Số ngày</label><input type="number" min={1} value={days} onChange={(e) => setDays(Number(e.target.value))} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]" /></div>
-                        <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Ngân sách (VNĐ)</label><input type="number" min={0} step={100000} value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]" /></div>
-                    </div>
-                    <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Ngày bắt đầu</label><DatePicker selected={startDate} onChange={(date: React.SetStateAction<Date | null>) => setStartDate(date)} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]" dateFormat="dd/MM/yyyy" /></div>
-                    <div><label className="block text-xs font-bold uppercase text-[var(--text-muted)] mb-1">Chủ đề</label><select value={theme} onChange={(e) => setTheme(e.target.value)} className="w-full p-3 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-sm outline-none focus:border-[var(--accent-primary)]"><option value="Khám phá">🏔️ Khám phá</option><option value="Nghỉ dưỡng">🏖️ Nghỉ dưỡng</option><option value="Ẩm thực">🍴 Ẩm thực</option><option value="Văn hóa">🏛️ Văn hóa</option></select></div>
-                    <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]"><button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-paper)] transition">Hủy</button><button type="submit" className="px-5 py-2 rounded-xl bg-[var(--accent-primary)] text-white text-xs font-bold shadow-md hover:opacity-90 transition">Tạo lộ trình</button></div>
-                </form>
-            </motion.div>
         </div>
     );
 }

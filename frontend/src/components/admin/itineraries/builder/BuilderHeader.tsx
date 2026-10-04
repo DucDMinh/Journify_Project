@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Map, ArrowLeft, Save, DollarSign, Plus, MapPin, X } from "lucide-react"; // 🌟 Nhớ import MapPin
+import { Map, ArrowLeft, Save, DollarSign, Plus, MapPin, X, Loader2 } from "lucide-react";
 
 interface BuilderHeaderProps {
     totalCost: number;
     selectedProvinces: any[];
     onBack: () => void;
     onSave: () => void;
+    isSaving?: boolean;
     isDropdownOpen: boolean;
     setIsDropdownOpen: (val: boolean) => void;
     searchProvince: string;
@@ -17,7 +18,7 @@ interface BuilderHeaderProps {
 }
 
 export const BuilderHeader = ({
-    totalCost, selectedProvinces, onBack, onSave,
+    totalCost, selectedProvinces, onBack, onSave, isSaving = false,
     isDropdownOpen, setIsDropdownOpen, searchProvince, setSearchProvince, filteredProvinces, onAddNewProvince, onOpenDropdown, onRemoveProvince
 }: BuilderHeaderProps) => {
     return (
@@ -102,14 +103,15 @@ export const BuilderHeader = ({
                 <div className="flex items-center gap-2 bg-green-50 px-4 py-2 text-green-700 rounded-xl dark:bg-green-900/30 dark:text-green-400">
                     <DollarSign className="h-5 w-5" />
                     <div>
-                        <p className="text-xs font-semibold">Tổng dự kiến</p>
+                        <p className="text-xs font-semibold">Chi phí hoạt động</p>
                         <p className="text-lg font-bold">{totalCost.toLocaleString('vi-VN')} đ</p>
                     </div>
                 </div>
                 <button
                     onClick={onSave}
-                    className="flex items-center rounded-xl bg-brand-600 px-6 py-2.5 font-bold text-white transition-transform active:scale-95 hover:bg-brand-700 shadow-md shadow-brand-500/30">
-                    <Save className="mr-2 h-4 w-4" /> Lưu
+                    disabled={isSaving}
+                    className="flex items-center rounded-xl bg-brand-600 px-6 py-2.5 font-bold text-white transition-transform active:scale-95 hover:bg-brand-700 shadow-md shadow-brand-500/30 disabled:cursor-not-allowed disabled:opacity-60">
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} {isSaving ? "Đang lưu..." : "Lưu"}
                 </button>
             </div>
         </>

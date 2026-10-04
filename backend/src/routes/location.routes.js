@@ -1,10 +1,10 @@
 import Router from '@koa/router';
-import multer from '@koa/multer';
+import { createUpload } from '../helpers/uploadHelper.js';
 import * as locationController from '../controllers/locationController.js';
 import { verifyToken, requireAdmin } from "../middleware/auth.middleware.js";
 
 const router = new Router({ prefix: '/locations' });
-const upload = multer();
+const upload = createUpload();
 
 router.get('/', locationController.getAllLocations);
 router.get('/:id', locationController.getLocationById);

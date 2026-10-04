@@ -1,54 +1,57 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Calendar, Type, ArrowRight, Sparkles } from "lucide-react";
-import { Province } from "@/interface";
-import { toast } from 'sonner';
-import { api } from "@/lib/apiClient";
-import { useDashboard } from "@/app/user/(dashboard)/layout";
+import { motion } from "framer-motion";
+import { X, MapPin, Calendar, Type, ArrowRight, Sparkles, LogIn } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from 'sonner';
+import { Province } from "@/interface";
+import { api } from "@/lib/apiClient";
+import { useAuth } from "@/hooks/auth/AuthContext";
+import { countTripDays, todayIso } from "@/lib/format";
 
 interface CreateTripModalProps {
     onClose: () => void;
+    initialProvinceId?: string;
 }
 
-export const CreateTripModal = ({ onClose }: CreateTripModalProps) => {
+const inputClass =
+    "w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] px-4 py-3 text-sm font-medium text-[var(--text-main)] transition-all focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)] [color-scheme:light] dark:[color-scheme:dark]";
+
+export const CreateTripModal = ({ onClose, initialProvinceId }: CreateTripModalProps) => {
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedProvinces, setSelectedProvinces] = useState<Province[]>([]);
-    const { setIsCreatingTrip } = useDashboard();
+    const [formData, setFormData] = useState({ title: "", start_date: "", end_date: "" });
+    const { user: currentUser } = useAuth();
     const router = useRouter();
-
-    const [formData, setFormData] = useState({
-        title: "",
-        start_date: "",
-        end_date: "",
-    });
-
-    const fetchProvinces = async () => {
-        try {
-            const { data, response } = await api.get<Province[]>('/provinces');
-            if (!response.ok) throw new Error(data.message || "Lỗi khi lấy dữ liệu tỉnh thành!");
-            setProvinces(data.data ?? []);
-        } catch (error) {
-            toast.error(`Lỗi: ${error}`);
-        }
-    };
+    const today = todayIso();
 
     useEffect(() => {
-        fetchProvinces();
-    }, []);
+        let ignore = false;
+        api.get<Province[]>('/provinces').then(({ data, response }) => {
+            if (ignore) return;
+            if (!response.ok) {
+                toast.error(data.message || "Không tải được danh sách tỉnh thành");
+                return;
+            }
+            const list = data.data ?? [];
+            setProvinces(list);
+            const initial = list.find((p) => p.id === initialProvinceId);
+            if (initial) setSelectedProvinces([initial]);
+        });
+        return () => {
+            ignore = true;
+        };
+    }, [initialProvinceId]);
+
     const handleSelectProvince = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const provId = e.target.value;
-        const prov = provinces.find(p => p.id === provId);
-        if (prov && !selectedProvinces.some(p => p.id === prov.id)) {
-            setSelectedProvinces([...selectedProvinces, prov]);
-        }
+        const prov = provinces.find((p) => p.id === e.target.value);
+        if (prov && !selectedProvinces.some((p) => p.id === prov.id)) setSelectedProvinces([...selectedProvinces, prov]);
         e.target.value = "";
     };
-    const handleRemoveProvince = (idToRemove: string) => {
-        setSelectedProvinces(selectedProvinces.filter(p => p.id !== idToRemove));
-    };
+
+    const tripDays = countTripDays(formData.start_date, formData.end_date);
+    const hasInvalidDates = Boolean(formData.start_date && formData.end_date && !tripDays);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,167 +59,151 @@ export const CreateTripModal = ({ onClose }: CreateTripModalProps) => {
             toast.error("Vui lòng chọn ít nhất 1 điểm đến!");
             return;
         }
+        if (hasInvalidDates) {
+            toast.error("Ngày về phải sau hoặc bằng ngày đi");
+            return;
+        }
 
         setIsSubmitting(true);
         const toastId = toast.loading("Đang khởi tạo không gian làm việc...");
-
-        try {
-            const payload = {
-                title: formData.title,
-                start_date: formData.start_date || undefined,
-                end_date: formData.end_date || undefined,
-                itinerary_provinces: selectedProvinces.map((p) => ({ province_id: p.id })),
-                image_url: selectedProvinces[0]?.image_url || undefined,
-            };
-
-            const { data, response } = await api.post<{ itinerary_id?: string; id?: string }>('/itineraries', payload);
-
-            if (!response.ok) throw new Error(data.message || "Lỗi khi tạo lộ trình");
-
-            toast.success("Khởi tạo thành công!", { id: toastId });
-            setIsCreatingTrip(false);
-            const newTripId = data.data?.itinerary_id || data.data?.id;
-            if (newTripId) {
-                router.push(`/my-itinerary/${newTripId}/builder`);
-            }
-
-        } catch (error) {
-            toast.error(`Có lỗi xảy ra: ${error}`, { id: toastId });
+        const payload = {
+            title: formData.title.trim(),
+            start_date: formData.start_date || null,
+            end_date: formData.end_date || null,
+            ...(tripDays ? { days: tripDays, nights: tripDays - 1 } : {}),
+            itinerary_provinces: selectedProvinces.map((p) => ({ province_id: p.id })),
+            image_url: selectedProvinces[0]?.image_url || null,
+        };
+        const { data, response } = await api.post<{ itinerary_id?: string; id?: string }>('/itineraries', payload);
+        if (!response.ok) {
+            toast.error(data.message || "Không tạo được lộ trình", { id: toastId });
             setIsSubmitting(false);
+            return;
         }
+        toast.success("Khởi tạo thành công! Hãy thêm địa điểm cho từng ngày.", { id: toastId });
+        const newTripId = data.data?.itinerary_id || data.data?.id;
+        onClose();
+        router.push(newTripId ? `/my-itinerary/${newTripId}/builder` : "/my-itinerary");
     };
-    const today = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
-    return (
-        <AnimatePresence>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={onClose}
-                    className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                />
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="relative w-full max-w-md bg-[var(--bg-card)] border border-[var(--border-color)] rounded-3xl shadow-2xl overflow-hidden z-10"
-                >
-                    <div className="relative bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 p-6 text-white overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-20"><Sparkles className="w-16 h-16" /></div>
-                        <h2 className="relative z-10 font-display text-2xl font-bold mb-1">Bắt đầu hành trình</h2>
-                        <p className="relative z-10 text-sm text-indigo-100">Khởi tạo chuyến đi tuyệt vời tiếp theo của bạn.</p>
 
-                        <button
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative z-10 max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl"
+            >
+                <div className="relative overflow-hidden bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 p-6 text-white">
+                    <div className="absolute right-0 top-0 p-4 opacity-20"><Sparkles className="h-16 w-16" /></div>
+                    <h2 className="font-display relative z-10 mb-1 text-2xl font-bold">Bắt đầu hành trình</h2>
+                    <p className="relative z-10 text-sm text-indigo-100">Khởi tạo chuyến đi tuyệt vời tiếp theo của bạn.</p>
+                    <button onClick={onClose} className="absolute right-4 top-4 z-20 rounded-full bg-white/10 p-2 backdrop-blur-sm transition-colors hover:bg-white/20" aria-label="Đóng">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                {!currentUser ? (
+                    <div className="space-y-4 p-6 text-center">
+                        <p className="text-sm text-[var(--text-muted)]">Bạn cần đăng nhập để tạo và lưu lộ trình của riêng mình.</p>
+                        <Link
+                            href="/auth/signin"
                             onClick={onClose}
-                            className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors backdrop-blur-sm"
+                            className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-6 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90"
                         >
-                            <X className="w-4 h-4" />
-                        </button>
+                            <LogIn className="h-4 w-4" /> Đăng nhập ngay
+                        </Link>
                     </div>
-                    <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                ) : (
+                    <form onSubmit={handleSubmit} className="space-y-5 p-6">
                         <div>
-                            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <MapPin className="w-3.5 h-3.5" /> Điểm đến (Có thể chọn nhiều)
+                            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                                <MapPin className="h-3.5 w-3.5" /> Điểm đến (có thể chọn nhiều)
                             </label>
                             {selectedProvinces.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-3">
-                                    {selectedProvinces.map(prov => (
-                                        <span
-                                            key={prov.id}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] text-sm font-bold rounded-lg border border-[var(--accent-primary)]/20"
-                                        >
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                    {selectedProvinces.map((prov) => (
+                                        <span key={prov.id} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/10 px-3 py-1.5 text-sm font-bold text-[var(--accent-primary)]">
                                             {prov.name}
                                             <button
                                                 type="button"
-                                                onClick={() => handleRemoveProvince(prov.id)}
-                                                className="hover:bg-[var(--accent-primary)] hover:text-white rounded-full p-0.5 transition-colors"
+                                                onClick={() => setSelectedProvinces(selectedProvinces.filter((p) => p.id !== prov.id))}
+                                                className="rounded-full p-0.5 transition-colors hover:bg-[var(--accent-primary)] hover:text-white"
+                                                aria-label={`Bỏ ${prov.name}`}
                                             >
-                                                <X className="w-3.5 h-3.5" />
+                                                <X className="h-3.5 w-3.5" />
                                             </button>
                                         </span>
                                     ))}
                                 </div>
                             )}
-                            <select
-                                defaultValue=""
-                                onChange={handleSelectProvince}
-                                className="w-full bg-[var(--bg-paper)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all appearance-none"
-                            >
-                                <option value="" disabled>+ Bấm để chọn Tỉnh/Thành phố...</option>
-                                {provinces.filter(p => !selectedProvinces.some(sp => sp.id === p.id)).map(prov => (
-                                    <option key={prov.id} value={prov.id}>{prov.name}</option>
-                                ))}
+                            <select defaultValue="" onChange={handleSelectProvince} className={inputClass}>
+                                <option value="" disabled>+ Chọn tỉnh/thành phố...</option>
+                                {provinces
+                                    .filter((p) => !selectedProvinces.some((sp) => sp.id === p.id))
+                                    .map((prov) => (
+                                        <option key={prov.id} value={prov.id}>{prov.name}</option>
+                                    ))}
                             </select>
                         </div>
 
                         <div>
-                            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <Type className="w-3.5 h-3.5" /> Tên chuyến đi
+                            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                                <Type className="h-3.5 w-3.5" /> Tên chuyến đi
                             </label>
                             <input
                                 required
+                                maxLength={200}
                                 type="text"
                                 value={formData.title}
                                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                className="w-full bg-[var(--bg-paper)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
-                                placeholder="Vd: Chuyến đi thanh xuân Đà Lạt..."
+                                className={`${inputClass} font-bold`}
+                                placeholder="VD: Chuyến đi thanh xuân Đà Lạt..."
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Calendar className="w-3.5 h-3.5" /> Ngày đi
+                                <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                                    <Calendar className="h-3.5 w-3.5" /> Ngày đi
                                 </label>
                                 <input
                                     type="date"
                                     min={today}
-                                    value={formData?.start_date || ''}
+                                    value={formData.start_date}
                                     onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                                    onClick={(e) => {
-                                        if ('showPicker' in HTMLInputElement.prototype) {
-                                            e.currentTarget.showPicker();
-                                        }
-                                    }}
-
-                                    className="w-full cursor-pointer rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm font-medium focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white [color-scheme:light_dark]"
+                                    className={`${inputClass} cursor-pointer`}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Calendar className="w-3.5 h-3.5" /> Ngày về
+                                <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                                    <Calendar className="h-3.5 w-3.5" /> Ngày về
                                 </label>
                                 <input
                                     type="date"
-                                    value={formData?.end_date || ''}
+                                    min={formData.start_date || today}
+                                    value={formData.end_date}
                                     onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                                    min={formData?.start_date || today}
-                                    onClick={(e) => {
-                                        if ('showPicker' in HTMLInputElement.prototype) {
-                                            e.currentTarget.showPicker();
-                                        }
-                                    }}
-
-                                    className="w-full cursor-pointer rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm font-medium focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white [color-scheme:light_dark]"
+                                    className={`${inputClass} cursor-pointer ${hasInvalidDates ? "border-red-400" : ""}`}
                                 />
                             </div>
                         </div>
-                        <div className="pt-2">
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
-                            >
-                                {isSubmitting ? (
-                                    <span className="flex items-center gap-2">Đang khởi tạo...</span>
-                                ) : (
-                                    <span className="flex items-center gap-2">Tiếp tục lên kế hoạch <ArrowRight className="w-4 h-4" /></span>
-                                )}
-                            </button>
-                        </div>
+                        <p className="-mt-2 text-xs text-[var(--text-muted)]">
+                            {hasInvalidDates
+                                ? "Ngày về phải sau hoặc bằng ngày đi."
+                                : tripDays
+                                  ? `Chuyến đi ${tripDays} ngày ${tripDays - 1} đêm, hệ thống sẽ tạo sẵn ${tripDays} ngày trong lịch trình.`
+                                  : "Có thể bỏ trống ngày và chọn sau trong trình thiết kế."}
+                        </p>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] py-3.5 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:transform-none disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                            {isSubmitting ? "Đang khởi tạo..." : <>Tiếp tục lên kế hoạch <ArrowRight className="h-4 w-4" /></>}
+                        </button>
                     </form>
-                </motion.div>
-            </div>
-        </AnimatePresence>
+                )}
+            </motion.div>
+        </div>
     );
 };

@@ -22,7 +22,7 @@ class OrderRepository extends BaseRepository {
             await this.table()
                 .update({ status: 'PAID', ...details })
                 .eq('id', id)
-                .eq('status', 'PENDING')
+                .in('status', ['PENDING', 'CANCEL'])
                 .select()
                 .maybeSingle(),
         );

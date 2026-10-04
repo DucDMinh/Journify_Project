@@ -3,6 +3,7 @@ import { Edit, Trash2, MapPin, Compass } from "lucide-react";
 import { Location } from "@/interface";
 import { Popconfirm } from "antd";
 import { motion } from "framer-motion";
+import SafeImage from "@/components/common/SafeImage";
 
 interface LocationTableProps {
     locations: Location[];
@@ -42,8 +43,7 @@ export const LocationTable: React.FC<LocationTableProps> = ({
                     <td className="px-6 py-4">
                         <div className="relative h-14 w-24 overflow-hidden rounded-xl border border-gray-200/60 shadow-sm dark:border-gray-700">
                             {loc.img ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
+                                <SafeImage
                                     src={loc.img}
                                     alt={loc.name}
                                     className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"

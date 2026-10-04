@@ -7,6 +7,7 @@ interface DayCardProp {
     days: Itinerary_days[];
     handleRemoveActivity: (dayId: string, activityId: string) => void;
     handleUpdateActivity: UpdateActivityFn;
+    handleUpdateDayTitle: (dayId: string, title: string) => void;
     handleMoveActivity: (dayId: string, activityId: string, direction: 'UP' | 'DOWN') => void;
     setIsMapModalOpen: (isOpen: boolean) => void;
     setCurrentActiveDayId: (id: string | null) => void;
@@ -20,6 +21,7 @@ export const DayCard = ({
     days,
     handleRemoveActivity,
     handleUpdateActivity,
+    handleUpdateDayTitle,
     handleMoveActivity,
     setIsMapModalOpen,
     setCurrentActiveDayId,
@@ -35,7 +37,7 @@ export const DayCard = ({
                 <motion.div key={day.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">                              <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800/50">
                     <div className="flex items-center gap-3 w-full">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-sm font-bold text-white dark:bg-white dark:text-gray-900">{day.day_number}</div>
-                        <input type="text" defaultValue={day.title} className="w-full border-none bg-transparent font-bold text-gray-900 focus:ring-0 dark:text-white outline-none" />
+                        <input type="text" value={day.title ?? ""} onChange={(e) => handleUpdateDayTitle(day.id, e.target.value)} placeholder={`Ngày ${day.day_number}`} aria-label={`Tiêu đề ngày ${day.day_number}`} className="w-full border-none bg-transparent font-bold text-gray-900 focus:ring-0 dark:text-white outline-none" />
                     </div>
                     <button
                         onClick={() => handleOptimizeDay(day.id)}
@@ -120,7 +122,7 @@ export const DayCard = ({
                                             <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Từ</label>
                                             <input
                                                 type="time"
-                                                value={loc.start_time}
+                                                value={loc.start_time ?? ""}
                                                 onChange={(e) => handleUpdateActivity(day.id, loc.id, 'start_time', e.target.value)}
                                                 className="w-full rounded-lg border border-gray-200 bg-white p-2 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-white h-[42px] [color-scheme:light_dark]"
                                             />
@@ -129,7 +131,7 @@ export const DayCard = ({
                                             <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Đến</label>
                                             <input
                                                 type="time"
-                                                value={loc.end_time}
+                                                value={loc.end_time ?? ""}
                                                 onChange={(e) => handleUpdateActivity(day.id, loc.id, 'end_time', e.target.value)}
                                                 className="w-full rounded-lg border border-gray-200 bg-white p-2 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-white h-[42px] [color-scheme:light_dark]"
                                             />
@@ -142,6 +144,8 @@ export const DayCard = ({
                                             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                                             <input
                                                 type="number"
+                                                min={0}
+                                                step={10000}
                                                 placeholder="0"
                                                 value={loc.cost || ''}
                                                 onChange={(e) => handleUpdateActivity(day.id, loc.id, 'cost', Number(e.target.value))}
@@ -155,7 +159,7 @@ export const DayCard = ({
                                     <input
                                         type="text"
                                         placeholder="Ghi chú (VD: Lên đồ đẹp chụp hình, vé vào cổng mua trước...)"
-                                        value={loc.activity_note}
+                                        value={loc.activity_note ?? ""}
                                         onChange={(e) => handleUpdateActivity(day.id, loc.id, 'activity_note', e.target.value)}
                                         className="w-full rounded-lg border border-transparent bg-transparent p-2 text-sm text-gray-700 placeholder-gray-400 hover:border-gray-200 hover:bg-white focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-gray-300 dark:hover:border-gray-600 dark:hover:bg-gray-900 dark:focus:bg-gray-900"
                                     />

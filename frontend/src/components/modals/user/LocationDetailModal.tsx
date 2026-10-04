@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 import React from "react";
 import { motion, Variants } from "framer-motion";
 import {
@@ -15,11 +14,12 @@ import {
     CalendarCheck
 } from "lucide-react";
 import { Location } from "@/interface";
+import SafeImage from "@/components/common/SafeImage";
+import { shortPlaceName } from "@/lib/format";
 
 interface LocationDetailModalProps {
     location: Location;
     onClose: () => void;
-    onSave?: (id: string) => void;
 }
 
 export default function LocationDetailModal({ location, onClose }: LocationDetailModalProps) {
@@ -53,8 +53,9 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                 className="relative w-full max-w-5xl bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[32px] shadow-2xl overflow-hidden z-10 flex flex-col md:flex-row max-h-[85vh]"
             >
                 <div className="md:w-5/12 relative h-72 md:h-auto shrink-0 group">
-                    <img
-                        src={location.img || fallbackImg}
+                    <SafeImage
+                        src={location.img}
+                        fallback={fallbackImg}
                         alt={location.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                     />
@@ -69,7 +70,7 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                     <div className="absolute bottom-6 left-6 right-6 flex flex-col gap-4">
                         <div>
                             <div className="flex flex-wrap gap-2 mb-3">
-                                {location.rating && (
+                                {Number(location.rating) > 0 && (
                                     <span className="bg-black/40 backdrop-blur-md border border-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                                         <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
                                         {location.rating} / 5.0
@@ -80,8 +81,8 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                                     {location.provinces?.name || "Việt Nam"}
                                 </span>
                             </div>
-                            <h2 className="font-display text-3xl sm:text-4xl font-bold text-white drop-shadow-lg leading-tight line-clamp-3">
-                                {location.name}
+                            <h2 className="font-display text-3xl sm:text-4xl font-bold text-white drop-shadow-lg leading-tight line-clamp-3" title={location.name}>
+                                {shortPlaceName(location.name)}
                             </h2>
                         </div>
                     </div>
@@ -133,7 +134,7 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                                 </p>
                             </motion.div>
                             <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {(location.lat && location.lng) ? (
+                                {Number.isFinite(location.lat) && Number.isFinite(location.lng) && !(location.lat === 0 && location.lng === 0) ? (
                                     <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-sm hover:border-[var(--accent-primary)]/50 transition-colors group flex flex-col justify-between">
                                         <div>
                                             <div className="w-8 h-8 rounded-lg bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] flex items-center justify-center mb-3">
@@ -176,7 +177,7 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                                     </div>
                                     <div className="mt-4 pt-3 border-t border-[var(--border-color)] flex items-center gap-4">
                                         <a
-                                            href={`https://www.traveloka.com/vi-vn/search?q=${encodeURIComponent(location.name)}`}
+                                            href={`https://www.traveloka.com/vi-vn/search?q=${encodeURIComponent(shortPlaceName(location.name))}`}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 group-hover:underline"
@@ -184,7 +185,7 @@ export default function LocationDetailModal({ location, onClose }: LocationDetai
                                             Traveloka <ExternalLink className="w-3 h-3" />
                                         </a>
                                         <a
-                                            href={`https://www.booking.com/searchresults.vi.html?ss=${encodeURIComponent(location.name)}`}
+                                            href={`https://www.booking.com/searchresults.vi.html?ss=${encodeURIComponent(shortPlaceName(location.name))}`}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 hover:underline"

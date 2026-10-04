@@ -1,11 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @next/next/no-img-element */
 import { Itinerary, Itinerary_days, Itinerary_locations } from "@/interface";
-import { CheckCircle2, Circle, Compass, Luggage, MapPin, X, Navigation, Map, Save, Image as ImageIcon, Calendar, FileText, Tag, DollarSign, Globe, Lock } from "lucide-react";
+import { CheckCircle2, Circle, Compass, Luggage, MapPin, X, Navigation, Map, Save, Image as ImageIcon, Calendar, FileText, Tag, DollarSign, Globe, Lock, PencilRuler, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { motion, Variants } from "framer-motion";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { api } from "@/lib/apiClient";
+import SafeImage from "@/components/common/SafeImage";
+import { countTripDays, formatTimeRange } from "@/lib/format";
+import { themeOptions } from "@/lib/itinerary";
 
 const RouteMapViewer = dynamic(() => import("@/components/admin/itineraries/builder/RouteMapViewer"), {
     ssr: false,
@@ -19,13 +23,15 @@ const RouteMapViewer = dynamic(() => import("@/components/admin/itineraries/buil
 
 export const TripDetailModal1 = ({
     itinerary,
-    onClose
+    onClose,
+    onSaved,
 }: {
     itinerary: Itinerary;
     onClose: () => void;
-    onSave: () => void
+    onSaved: (updated: Itinerary) => void;
 }) => {
     const [activeTab, setActiveTab] = useState<"itinerary" | "checklist" | "map">("itinerary");
+    const [isSaving, setIsSaving] = useState(false);
     const router = useRouter();
     const [editForm, setEditForm] = useState({
         title: itinerary.title || "",
@@ -38,16 +44,44 @@ export const TripDetailModal1 = ({
         share: itinerary.share || false,
     });
 
-    const getDuration = () => {
-        if (!editForm.start_date || !editForm.end_date) return { days: itinerary.days || 1, nights: itinerary.nights || 0 };
-        const d1 = new Date(editForm.start_date);
-        const d2 = new Date(editForm.end_date);
-        const diffTime = d2.getTime() - d1.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays < 0) return { days: 1, nights: 0 };
-        return { days: diffDays + 1, nights: diffDays };
+    const tripDays = countTripDays(editForm.start_date, editForm.end_date);
+    const duration = tripDays ? { days: tripDays, nights: tripDays - 1 } : { days: itinerary.days || 1, nights: itinerary.nights || 0 };
+    const hasInvalidDates = Boolean(editForm.start_date && editForm.end_date && !tripDays);
+
+    const handleSave = async () => {
+        if (!editForm.title.trim()) {
+            toast.error("Tên lộ trình không được để trống");
+            return;
+        }
+        if (hasInvalidDates) {
+            toast.error("Ngày về phải sau hoặc bằng ngày đi");
+            return;
+        }
+        setIsSaving(true);
+        const toastId = toast.loading("Đang lưu thay đổi...");
+        try {
+            const payload = {
+                title: editForm.title.trim(),
+                summary: editForm.summary.trim() || null,
+                theme: editForm.theme || null,
+                start_date: editForm.start_date || null,
+                end_date: editForm.end_date || null,
+                estimated_cost: Math.max(0, Number(editForm.estimated_cost) || 0),
+                image_url: editForm.image_url.trim() || null,
+                share: editForm.share,
+                ...(tripDays ? { days: tripDays, nights: tripDays - 1 } : {}),
+            };
+            const { response, data } = await api.patch(`/itineraries/${itinerary.id}`, payload);
+            if (!response.ok) throw new Error(data.message || "Không lưu được thay đổi");
+            const fresh = await api.get<Itinerary>(`/itineraries/${itinerary.id}`);
+            onSaved(fresh.response.ok && fresh.data.data ? fresh.data.data : { ...itinerary, ...payload });
+            toast.success("Đã lưu thay đổi lộ trình", { id: toastId });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Không lưu được thay đổi", { id: toastId });
+        } finally {
+            setIsSaving(false);
+        }
     };
-    const duration = getDuration();
 
     const defaultChecklist = [
         { item: "Căn cước công dân / Hộ chiếu", checked: true },
@@ -89,7 +123,7 @@ export const TripDetailModal1 = ({
                         </div>
 
                         <div className="relative h-40 sm:h-48 rounded-2xl overflow-hidden shadow-md mb-6 border border-[var(--border-color)] shrink-0 group">
-                            <img src={editForm.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800'} alt={editForm.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                            <SafeImage src={editForm.image_url} alt={editForm.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                 <span className="text-white text-xs font-bold flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Sửa link ảnh ở Form dưới</span>
                             </div>
@@ -133,6 +167,7 @@ export const TripDetailModal1 = ({
                                     <input
                                         type="date"
                                         value={editForm.end_date}
+                                        min={editForm.start_date || undefined}
                                         onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
                                         className="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
                                     />
@@ -142,18 +177,23 @@ export const TripDetailModal1 = ({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1.5 flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Chủ đề</label>
-                                    <input
-                                        type="text"
+                                    <select
                                         value={editForm.theme}
                                         onChange={(e) => setEditForm({ ...editForm, theme: e.target.value })}
                                         className="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
-                                        placeholder="Vd: Ẩm thực"
-                                    />
+                                    >
+                                        <option value="">Chọn chủ đề...</option>
+                                        {themeOptions(editForm.theme).map((theme) => (
+                                            <option key={theme} value={theme}>{theme}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1.5 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> Chi phí dự kiến</label>
                                     <input
                                         type="number"
+                                        min={0}
+                                        step={50000}
                                         value={editForm.estimated_cost}
                                         onChange={(e) => setEditForm({ ...editForm, estimated_cost: Number(e.target.value) })}
                                         className="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
@@ -192,11 +232,11 @@ export const TripDetailModal1 = ({
                         </div>
                     </div>
                     <div className="mt-4 pt-4 flex gap-3 shrink-0 bg-[var(--bg-bento)] border-t border-[var(--border-color)]">
-                        <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-muted)] font-bold text-sm hover:text-[var(--text-main)] transition-colors shadow-sm">
-                            Hủy
+                        <button onClick={() => router.push(`/my-itinerary/${itinerary.id}/builder`)} className="flex-1 py-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-main)] font-bold text-sm hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors shadow-sm flex items-center justify-center gap-2">
+                            <PencilRuler className="w-4 h-4" /> Sửa lịch trình
                         </button>
-                        <button onClick={() => router.push(`/my-itinerary/${itinerary.id}/builder`)} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-[0_4px_12px_rgba(var(--accent-primary-rgb),0.3)] hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
-                            <Save className="w-4 h-4" /> Cập nhật
+                        <button onClick={handleSave} disabled={isSaving} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0">
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Lưu thay đổi
                         </button>
                     </div>
                 </div>
@@ -223,7 +263,7 @@ export const TripDetailModal1 = ({
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 opacity-75 hover:opacity-100 transition-opacity">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                         {activeTab === "itinerary" && (
                             itinerary.itinerary_days && itinerary.itinerary_days.length > 0 ? (
                                 <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-10">
@@ -252,10 +292,10 @@ export const TripDetailModal1 = ({
                                                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
                                                                         <h5 className="font-bold text-base flex items-center gap-2 group-hover:text-[var(--accent-primary)] transition-colors">
                                                                             <Navigation className="w-4 h-4 text-[var(--accent-gold)]" />
-                                                                            {loc.location_name}
+                                                                            {loc.location_name || loc.locations?.name || "Hoạt động tự do"}
                                                                         </h5>
                                                                         <span className="inline-flex items-center text-xs font-bold bg-[var(--bg-bento)] text-[var(--text-muted)] px-2.5 py-1 rounded-md shrink-0 border border-[var(--border-color)]">
-                                                                            {loc.start_time.slice(0, 5)} {loc.end_time ? ` - ${loc.end_time.slice(0, 5)}` : ''}
+                                                                            {formatTimeRange(loc.start_time, loc.end_time)}
                                                                         </span>
                                                                     </div>
                                                                     {loc.activity_note && (
@@ -282,7 +322,7 @@ export const TripDetailModal1 = ({
                                         <Compass className="w-8 h-8 opacity-50 animate-spin-slow text-[var(--accent-primary)]" />
                                     </div>
                                     <h4 className="font-bold text-lg text-[var(--text-main)] mb-1">Chưa có lịch trình</h4>
-                                    <p className="text-sm">Hãy lưu lại để chuyển sang Trình tạo Lộ trình nhé...</p>
+                                    <p className="text-sm">Bấm &quot;Sửa lịch trình&quot; để thêm địa điểm cho từng ngày.</p>
                                 </div>
                             )
                         )}

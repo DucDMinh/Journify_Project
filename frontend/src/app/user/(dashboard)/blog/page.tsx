@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 import { useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
@@ -8,6 +7,7 @@ import { useBlogFeed } from "@/hooks/user/useBlogFeed";
 import { PostCard } from "@/components/user/community/PostCard";
 import { CreatePostModal } from "@/components/modals/user/CreatePostModal";
 import { removeAccents } from "@/utils/text";
+import UserAvatar from "@/components/common/UserAvatar";
 
 export default function BlogPage() {
     const { user: currentUser } = useAuth();
@@ -37,13 +37,7 @@ export default function BlogPage() {
                 {currentUser && (
                     <div className="mb-6 rounded-3xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4 shadow-sm">
                         <div className="flex items-center gap-3">
-                            {currentUser.avatar ? (
-                                <img src={currentUser.avatar} alt="" className="h-10 w-10 rounded-full border border-[var(--border-color)] object-cover" />
-                            ) : (
-                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-primary)]/15 font-bold text-[var(--accent-primary)]">
-                                    {currentUser.name?.charAt(0).toUpperCase()}
-                                </span>
-                            )}
+                            <UserAvatar src={currentUser.avatar} name={currentUser.name} className="h-10 w-10 border border-[var(--border-color)]" />
                             <button
                                 onClick={() => setIsCreateModalOpen(true)}
                                 className="flex-1 rounded-full bg-[var(--bg-paper)] px-5 py-3 text-left text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-gray-100 dark:hover:bg-slate-800"
@@ -69,7 +63,7 @@ export default function BlogPage() {
                 {isLoading ? (
                     <div className="space-y-6">{Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-72 animate-pulse rounded-3xl bg-[var(--border-color)]" />)}</div>
                 ) : visible.length === 0 ? (
-                    <p className="py-16 text-center text-sm text-[var(--text-muted)]">Chưa có bài viết nào.</p>
+                    <p className="py-16 text-center text-sm text-[var(--text-muted)]">{query.trim() ? "Không có bài viết phù hợp với từ khóa." : "Chưa có bài viết nào."}</p>
                 ) : (
                     <div className="space-y-6">
                         {visible.map((post) => (

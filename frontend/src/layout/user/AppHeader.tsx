@@ -1,186 +1,166 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @next/next/no-img-element */
-import { User } from "@/interface";
-import { Compass, CompassIcon, Crown, FolderKanban, LogIn, LogOut, Moon, Newspaper, PlusCircle, Settings, Sparkles, Sun, User as UserIcon, BookOpen } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { BookOpen, Compass, CompassIcon, Crown, FolderKanban, LogIn, LogOut, Moon, Newspaper, PlusCircle, Settings, Sparkles, Sun, User as UserIcon, type LucideIcon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useAuth } from "@/hooks/auth/AuthContext";
-import { PremiumModal } from "@/components/payment/PremiumModal";
+import { useTheme } from "@/context/ThemeContext";
+import UserAvatar from "@/components/common/UserAvatar";
 
-interface AppHeaderProp {
-    setActiveNav: React.Dispatch<React.SetStateAction<string>>;
-    setIsAiModalOpen: React.Dispatch<React.SetStateAction<boolean>>,
-    setIsCreatingTrip: React.Dispatch<React.SetStateAction<boolean>>,
-    setTheme: React.Dispatch<React.SetStateAction<"day" | "night">>,
-    currentUser: User | null,
-    theme: "day" | "night",
-    activeNav: string
+interface AppHeaderProps {
+    onOpenAiPlanner: () => void;
+    onCreateTrip: () => void;
+    onOpenPremium: () => void;
 }
 
-const NavItems = [
-    { id: "dashboard", label: "Khám phá", icon: Compass, path: '/' },
-    { id: "trips", label: "Lộ trình của tôi", icon: FolderKanban, path: '/my-itinerary' },
-    { id: "wishlist", label: "Blog", icon: Newspaper, path: '/blog' },
-    { id: "community", label: "Cộng đồng", icon: UserIcon, path: '/community' },
-    { id: "tips", label: "Cẩm nang", icon: BookOpen, path: '/tips' },
-    { id: "ai-planner", label: "AI Planner", icon: Sparkles },
+interface NavItem {
+    id: string;
+    label: string;
+    shortLabel: string;
+    icon: LucideIcon;
+    path?: string;
+    match?: string[];
+}
+
+const NAV_ITEMS: NavItem[] = [
+    { id: "dashboard", label: "Khám phá", shortLabel: "Khám phá", icon: Compass, path: "/", match: ["/", "/explore", "/itineraries"] },
+    { id: "trips", label: "Lộ trình của tôi", shortLabel: "Lộ trình", icon: FolderKanban, path: "/my-itinerary", match: ["/my-itinerary"] },
+    { id: "blog", label: "Blog", shortLabel: "Blog", icon: Newspaper, path: "/blog", match: ["/blog"] },
+    { id: "community", label: "Cộng đồng", shortLabel: "Cộng đồng", icon: UserIcon, path: "/community", match: ["/community"] },
+    { id: "tips", label: "Cẩm nang", shortLabel: "Cẩm nang", icon: BookOpen, path: "/tips", match: ["/tips"] },
+    { id: "ai-planner", label: "AI Planner", shortLabel: "AI", icon: Sparkles },
 ];
 
-export const AppHeader = ({
-    setActiveNav,
-    setIsAiModalOpen,
-    setIsCreatingTrip,
-    setTheme,
-    currentUser,
-    theme,
-    activeNav
-}: AppHeaderProp) => {
-    const [isMounted, setIsMounted] = useState(false);
+const MOBILE_NAV_IDS = ["dashboard", "trips", "blog", "community", "ai-planner"];
+
+const normalizePath = (pathname: string) => pathname.replace(/^\/user(?=\/|$)/, "") || "/";
+
+const isActive = (item: NavItem, path: string) =>
+    (item.match ?? []).some((prefix) => (prefix === "/" ? path === "/" : path === prefix || path.startsWith(`${prefix}/`)));
+
+export const AppHeader = ({ onOpenAiPlanner, onCreateTrip, onOpenPremium }: AppHeaderProps) => {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const { logout } = useAuth();
+    const { user: currentUser, isReady, logout } = useAuth();
+    const { theme, toggleTheme } = useTheme();
     const dropdownRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsProfileOpen(false);
-            }
-        };
-
-        if (isProfileOpen) {
-            document.addEventListener("mousedown", handleClickOutside);
-        } else {
-            document.removeEventListener("mousedown", handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [isProfileOpen]);
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
     const router = useRouter();
-    const handleNavItemClick = (item: any) => {
-        setActiveNav(item.id);
-        if (item.path) {
-            router.push(item.path);
-        }
-        else if (item.id === "ai-planner") {
-            setIsAiModalOpen(true);
-        }
+    const path = normalizePath(usePathname() ?? "/");
+
+    useEffect(() => {
+        if (!isProfileOpen) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsProfileOpen(false);
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isProfileOpen]);
+
+    const handleNavItemClick = (item: NavItem) => {
+        if (item.path) router.push(item.path);
+        else onOpenAiPlanner();
     };
+
+    const navButtonClass = (active: boolean) =>
+        `flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 text-sm font-medium transition-all ${
+            active
+                ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-paper)] hover:text-[var(--text-main)]"
+        }`;
 
     return (
         <>
-            <header className="sticky top-0 z-40 bg-[var(--bg-card)]/80 backdrop-blur-xl border-b border-[var(--border-color)] shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
-                    <div
-                        className="flex items-center gap-3 shrink-0 cursor-pointer"
-                        onClick={() => { setActiveNav("dashboard"); router.push('/'); }}
-                    >
-                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent-primary)] to-[var(--accent-gold)] flex items-center justify-center text-white shadow-md">
-                            <CompassIcon className="w-5 h-5" />
+            <header className="sticky top-0 z-40 border-b border-[var(--border-color)] bg-[var(--bg-card)]/80 shadow-sm backdrop-blur-xl">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+                    <NextLink href="/" className="flex shrink-0 items-center gap-3" aria-label="Journify - Trang chủ">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-[var(--accent-primary)] to-[var(--accent-gold)] text-white shadow-md">
+                            <CompassIcon className="h-5 w-5" />
                         </div>
-                        <span className="font-display font-bold text-xl tracking-tight hidden sm:inline">Journify</span>
-                    </div>
+                        <span className="font-display text-xl font-bold tracking-tight">Journify</span>
+                    </NextLink>
 
-                    <div className="flex items-center gap-2 md:gap-4">
-                        {NavItems.map((item) => (
+                    <nav className="hidden items-center gap-0.5 md:flex lg:gap-1" aria-label="Điều hướng chính">
+                        {NAV_ITEMS.map((item) => (
                             <button
                                 key={item.id}
                                 onClick={() => handleNavItemClick(item)}
-                                className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all ${activeNav === item.id
-                                    ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
-                                    : "text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-paper)]"
-                                    }`}
+                                title={item.label}
+                                aria-current={isActive(item, path) ? "page" : undefined}
+                                className={navButtonClass(isActive(item, path))}
                             >
-                                <item.icon className="w-4 h-4" />
-                                {item.label}
+                                <item.icon className="h-4 w-4 shrink-0" />
+                                <span className="hidden xl:inline">{item.label}</span>
                             </button>
                         ))}
+                    </nav>
 
+                    <div className="flex shrink-0 items-center gap-2">
                         <button
-                            onClick={() => {
-                                setIsCreatingTrip(true);
-                            }}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--accent-primary)] text-white text-sm font-bold shadow-md hover:opacity-90 transition"
+                            onClick={onCreateTrip}
+                            className="flex items-center gap-2 whitespace-nowrap rounded-full bg-[var(--accent-primary)] px-3 py-2.5 text-sm font-bold text-white shadow-md transition hover:opacity-90 sm:px-4"
+                            title="Tạo lộ trình"
                         >
-                            <PlusCircle className="w-4 h-4" />
+                            <PlusCircle className="h-4 w-4" />
                             <span className="hidden sm:inline">Tạo lộ trình</span>
                         </button>
 
-                        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-[var(--border-color)]">
+                        <div className="flex items-center gap-2 border-l border-[var(--border-color)] pl-2">
                             <button
-                                onClick={() => setTheme((t) => (t === "day" ? "night" : "day"))}
-                                className="p-2 rounded-full hover:bg-[var(--bg-paper)] text-[var(--text-muted)] transition"
+                                onClick={toggleTheme}
+                                title={theme === "light" ? "Chuyển sang giao diện tối" : "Chuyển sang giao diện sáng"}
+                                className="rounded-full p-2 text-[var(--text-muted)] transition hover:bg-[var(--bg-paper)]"
                             >
-                                {theme === "day" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-[var(--accent-gold)]" />}
+                                {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-[var(--accent-gold)]" />}
                             </button>
-                            {!isMounted ? (
-                                <div className="w-24 h-9 bg-gray-200 rounded-full animate-pulse"></div>
+                            {!isReady ? (
+                                <div className="h-9 w-9 animate-pulse rounded-full bg-[var(--border-color)]" />
                             ) : currentUser ? (
                                 <div className="relative" ref={dropdownRef}>
                                     <button
-                                        onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                        className="block focus:outline-none"
+                                        onClick={() => setIsProfileOpen((open) => !open)}
+                                        className="block rounded-full border-2 border-[var(--accent-gold)] transition hover:scale-105 focus:outline-none"
+                                        aria-label="Mở menu tài khoản"
                                     >
-                                        <img
-                                            src={currentUser.avatar || "/images/user/owner.jpg"}
-                                            alt="avatar"
-                                            className="w-8 h-8 rounded-full border-2 border-[var(--accent-gold)] object-cover hover:scale-105 transition"
-                                        />
+                                        <UserAvatar src={currentUser.avatar} name={currentUser.name} className="h-8 w-8" textClassName="text-xs" />
                                     </button>
                                     {isProfileOpen && (
-                                        <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-lg py-1 z-50 transform origin-top-right transition-all animate-in fade-in slide-in-from-top-2">
-                                            <div className="px-4 py-3 border-b border-[var(--border-color)]">
-                                                <p className="text-sm font-bold text-[var(--text-main)] truncate">
-                                                    {currentUser.name}
-                                                </p>
-                                                <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                                                    {currentUser.email || "Thành viên Journify"}
-                                                </p>
+                                        <div className="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] py-1 shadow-lg">
+                                            <div className="border-b border-[var(--border-color)] px-4 py-3">
+                                                <p className="truncate text-sm font-bold text-[var(--text-main)]">{currentUser.name}</p>
+                                                <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{currentUser.email || "Thành viên Journify"}</p>
                                             </div>
                                             <div className="py-1">
                                                 <NextLink
                                                     href="/profile"
                                                     onClick={() => setIsProfileOpen(false)}
-                                                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--text-main)] hover:bg-[var(--bg-paper)] transition-colors"
+                                                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--text-main)] transition-colors hover:bg-[var(--bg-paper)]"
                                                 >
-                                                    <UserIcon className="w-4 h-4 text-[var(--text-muted)]" />
+                                                    <UserIcon className="h-4 w-4 text-[var(--text-muted)]" />
                                                     Hồ sơ cá nhân
                                                 </NextLink>
-
                                                 <NextLink
                                                     href="/settings"
                                                     onClick={() => setIsProfileOpen(false)}
-                                                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--text-main)] hover:bg-[var(--bg-paper)] transition-colors"
+                                                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--text-main)] transition-colors hover:bg-[var(--bg-paper)]"
                                                 >
-                                                    <Settings className="w-4 h-4 text-[var(--text-muted)]" />
+                                                    <Settings className="h-4 w-4 text-[var(--text-muted)]" />
                                                     Cài đặt
                                                 </NextLink>
-                                                {currentUser.is_premium ? (<>
-                                                    <button
-                                                        className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--accent-gold)] hover:bg-[var(--bg-paper)] transition-colors"
-                                                    >
-                                                        <Crown className="w-4 h-4" />
+                                                {currentUser.is_premium ? (
+                                                    <p className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--accent-gold)]">
+                                                        <Crown className="h-4 w-4" />
                                                         Bạn là hội viên Premium
-                                                    </button>
-                                                </>) : (<>
+                                                    </p>
+                                                ) : (
                                                     <button
                                                         onClick={() => {
                                                             setIsProfileOpen(false);
-                                                            setIsPaymentModalOpen(true);
+                                                            onOpenPremium();
                                                         }}
-                                                        className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--accent-gold)] hover:bg-[var(--bg-paper)] transition-colors"
+                                                        className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--accent-gold)] transition-colors hover:bg-[var(--bg-paper)]"
                                                     >
-                                                        <Crown className="w-4 h-4" />
+                                                        <Crown className="h-4 w-4" />
                                                         Nâng cấp Premium
-                                                    </button></>)}
-
+                                                    </button>
+                                                )}
                                             </div>
                                             <div className="border-t border-[var(--border-color)] py-1">
                                                 <button
@@ -188,9 +168,9 @@ export const AppHeader = ({
                                                         setIsProfileOpen(false);
                                                         logout();
                                                     }}
-                                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                                                    className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-500/10"
                                                 >
-                                                    <LogOut className="w-4 h-4" />
+                                                    <LogOut className="h-4 w-4" />
                                                     Đăng xuất
                                                 </button>
                                             </div>
@@ -200,39 +180,38 @@ export const AppHeader = ({
                             ) : (
                                 <NextLink
                                     href="/auth/signin"
-                                    className="flex items-center justify-center px-6 py-2 text-sm font-semibold text-orange-500 border border-orange-500 rounded-full hover:bg-orange-500 hover:text-white transition-all duration-300 shadow-sm whitespace-nowrap"
+                                    className="flex items-center justify-center whitespace-nowrap rounded-full border border-orange-500 px-3 py-2 text-sm font-semibold text-orange-500 shadow-sm transition-all duration-300 hover:bg-orange-500 hover:text-white sm:px-5"
                                 >
-                                    <LogIn className="w-4 h-4 mr-1" />
-                                    Đăng nhập
+                                    <LogIn className="h-4 w-4 sm:mr-1" />
+                                    <span className="hidden sm:inline">Đăng nhập</span>
                                 </NextLink>
                             )}
                         </div>
                     </div>
                 </div>
-                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t border-[var(--border-color)] z-50 flex justify-around items-center py-2 px-2 shadow-lg">
-                    {NavItems.slice(0, 4).map((item) => (
-                        <button
-                            key={item.id}
-                            onClick={() => handleNavItemClick(item)}
-                            className={`flex flex-col items-center gap-0.5 text-xs font-medium ${activeNav === item.id ? "text-[var(--accent-primary)]" : "text-[var(--text-muted)]"
-                                }`}
-                        >
-                            <item.icon className="w-5 h-5" />
-                            <span>{item.label}</span>
-                        </button>
-                    ))}
-                    <button
-                        onClick={() => setIsAiModalOpen(true)}
-                        className="flex flex-col items-center gap-0.5 text-xs font-medium text-[var(--accent-gold)]"
-                    >
-                        <Sparkles className="w-5 h-5" />
-                        <span>AI</span>
-                    </button>
-                </div>
             </header>
-            {isPaymentModalOpen && <>
-                <PremiumModal onClose={() => setIsPaymentModalOpen(false)} />
-            </>}
+            <nav
+                className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-[var(--border-color)] bg-[var(--bg-card)] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden"
+                aria-label="Điều hướng nhanh"
+            >
+                {NAV_ITEMS.filter((item) => MOBILE_NAV_IDS.includes(item.id)).map((item) => (
+                    <button
+                        key={item.id}
+                        onClick={() => handleNavItemClick(item)}
+                        aria-current={isActive(item, path) ? "page" : undefined}
+                        className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 text-[11px] font-medium ${
+                            item.id === "ai-planner"
+                                ? "text-[var(--accent-gold)]"
+                                : isActive(item, path)
+                                  ? "text-[var(--accent-primary)]"
+                                  : "text-[var(--text-muted)]"
+                        }`}
+                    >
+                        <item.icon className="h-5 w-5" />
+                        <span className="truncate">{item.shortLabel}</span>
+                    </button>
+                ))}
+            </nav>
         </>
-    )
-}
+    );
+};

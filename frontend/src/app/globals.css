@@ -4,7 +4,6 @@
 
 @theme {
   --font-*: initial;
-  --font-outfit: Outfit, sans-serif;
 
   --breakpoint-*: initial;
   --breakpoint-2xsm: 375px;
@@ -166,6 +165,14 @@
   --z-index-99999: 99999;
   --z-index-999999: 999999;
 }
+
+@theme inline {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-outfit: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-grotesk), var(--font-jakarta), sans-serif;
+  --font-hand: var(--font-caveat), cursive;
+}
+
 
 /*
   The default border color has changed to `currentColor` in Tailwind CSS v4,

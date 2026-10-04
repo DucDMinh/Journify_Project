@@ -1,6 +1,7 @@
 import { BaseController } from './baseController.js';
 import { orderRepo } from '../repositories/orderRepository.js';
-import { isAdmin } from '../middleware/auth.middleware.js';
+import { userRepo } from '../repositories/userRepository.js';
+import { isAdmin, invalidateSession } from '../middleware/auth.middleware.js';
 import { cancelOwnOrder, ORDER_STATUS } from '../services/paymentService.js';
 import { ok } from '../helpers/response.js';
 
@@ -21,11 +22,16 @@ class OrderController extends BaseController {
             return;
         }
 
-        await this.findOr404(id);
+        const existing = await this.findOr404(id);
         const payload = Object.fromEntries(Object.entries(body).filter(([k]) => ADMIN_EDITABLE_FIELDS.includes(k)));
         if (payload.status) ctx.assert(Object.values(ORDER_STATUS).includes(payload.status), 400, 'Trạng thái không hợp lệ');
         ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
-        ok(ctx, await orderRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+        const updated = await orderRepo.update(id, payload);
+        if (payload.status === ORDER_STATUS.PAID && existing.status !== ORDER_STATUS.PAID && existing.user_id) {
+            await userRepo.setPremium(existing.user_id, true);
+            invalidateSession(existing.user_id);
+        }
+        ok(ctx, updated, `Cập nhật ${this.itemName} thành công`);
     };
 }
 

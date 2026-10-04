@@ -1,22 +1,22 @@
-/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { MapPin } from "lucide-react";
 import { REGION_GRADIENTS, regionCover, useRegions } from "@/hooks/user/useRegions";
+import SafeImage from "@/components/common/SafeImage";
 
 export const RegionExplore = () => {
     const { regions, isLoading } = useRegions();
 
     return (
         <section>
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between gap-4">
                 <div>
                     <h2 className="font-display flex items-center gap-2 text-2xl font-bold">
                         <MapPin className="h-6 w-6 text-rose-500" /> Khám phá theo vùng miền
                     </h2>
                     <p className="mt-1 text-sm text-[var(--text-muted)]">Chọn một vùng đất để bắt đầu hành trình</p>
                 </div>
-                <Link href="/explore" className="text-sm font-bold text-[var(--accent-primary)] hover:underline">
+                <Link href="/explore" className="shrink-0 text-sm font-bold text-[var(--accent-primary)] hover:underline">
                     Xem 34 tỉnh thành
                 </Link>
             </div>
@@ -26,7 +26,7 @@ export const RegionExplore = () => {
                     : (regions ?? []).map((region) => (
                           <Link key={region.key} href={`/explore?region=${region.key}`}>
                               <motion.div whileHover={{ y: -5 }} className="group relative h-40 cursor-pointer overflow-hidden rounded-2xl shadow-sm md:h-48">
-                                  <img src={regionCover(region)} alt={region.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
+                                  <SafeImage src={regionCover(region)} alt={region.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
                                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                                   <div className="absolute inset-x-0 bottom-0 p-4 text-white">
                                       <h3 className="text-lg font-bold">{region.name}</h3>

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Pencil, Trash2, CheckCircle, AlertTriangle, UserX, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, CheckCircle, AlertTriangle, UserX, Loader2, ChevronLeft, ChevronRight, Crown } from "lucide-react";
 import { User, UserRole } from "@/interface";
 
 const ROLE_CONFIG: Record<UserRole, { label: string; color: string; bg: string }> = {
@@ -53,10 +53,13 @@ export default function UserTable({
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                                                    {user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                                                    {user.name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                                                 </div>
                                                 <div>
-                                                    <p className="font-medium text-gray-900 dark:text-white">{user.name}</p>
+                                                    <p className="flex items-center gap-1 font-medium text-gray-900 dark:text-white">
+                                                        {user.name}
+                                                        {user.is_premium && <Crown className="h-3.5 w-3.5 text-amber-500" aria-label="Premium" />}
+                                                    </p>
                                                     <p className="text-xs text-gray-500 md:hidden">{user.email}</p>
                                                 </div>
                                             </div>
@@ -68,9 +71,9 @@ export default function UserTable({
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 hidden sm:table-cell">
-                                            <button onClick={() => onToggleStatus(user)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${user.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>
-                                                {user.status === "active" ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-                                                {user.status === "active" ? "Hoạt động" : "Vô hiệu"}
+                                            <button onClick={() => onToggleStatus(user)} title={user.status === "inactive" ? "Bấm để mở khóa" : "Bấm để khóa tài khoản"} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${user.status !== "inactive" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>
+                                                {user.status !== "inactive" ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                                                {user.status !== "inactive" ? "Hoạt động" : "Vô hiệu"}
                                             </button>
                                         </td>
                                         <td className="px-6 py-4 text-right">

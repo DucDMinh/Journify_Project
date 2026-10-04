@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Heart, MapPin, MessageCircle, Share2, Trash2 } from "lucide-react";
@@ -6,6 +5,8 @@ import { toast } from "sonner";
 import { Blog, User } from "@/interface";
 import { timeAgo } from "@/utils/time";
 import { CommentSection } from "./CommentSection";
+import SafeImage from "@/components/common/SafeImage";
+import UserAvatar from "@/components/common/UserAvatar";
 
 interface PostCardProps {
     post: Blog;
@@ -24,7 +25,7 @@ export function PostCard({ post, currentUser, onToggleLike, onDelete, onCommentC
     const share = async () => {
         const url = `${window.location.origin}/community#post-${post.id}`;
         try {
-            if (navigator.share) await navigator.share({ title: "Journify", text: post.content.slice(0, 120), url });
+            if (navigator.share) await navigator.share({ title: "Journify", text: (post.content ?? "").slice(0, 120), url });
             else {
                 await navigator.clipboard.writeText(url);
                 toast.success("Đã sao chép liên kết bài viết");
@@ -43,13 +44,7 @@ export function PostCard({ post, currentUser, onToggleLike, onDelete, onCommentC
         >
             <div className="flex items-start justify-between p-4">
                 <div className="flex items-center gap-3">
-                    {author?.avatar ? (
-                        <img src={author.avatar} alt="" className="h-10 w-10 rounded-full border border-[var(--border-color)] object-cover" />
-                    ) : (
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-primary)]/15 font-bold text-[var(--accent-primary)]">
-                            {author?.name?.charAt(0).toUpperCase() ?? "?"}
-                        </span>
-                    )}
+                    <UserAvatar src={author?.avatar} name={author?.name} className="h-10 w-10 border border-[var(--border-color)]" />
                     <div>
                         <h3 className="text-[15px] font-bold text-[var(--text-main)]">
                             {author?.name ?? "Thành viên"}
@@ -74,7 +69,7 @@ export function PostCard({ post, currentUser, onToggleLike, onDelete, onCommentC
                     </div>
                 </div>
                 {canDelete && (
-                    <button onClick={() => onDelete(post)} className="rounded-full p-2 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500" title="Xóa bài viết">
+                    <button onClick={() => onDelete(post)} className="rounded-full p-2 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10" title="Xóa bài viết" aria-label="Xóa bài viết">
                         <Trash2 className="h-4 w-4" />
                     </button>
                 )}
@@ -86,7 +81,7 @@ export function PostCard({ post, currentUser, onToggleLike, onDelete, onCommentC
 
             {post.blog_image && (
                 <div className="w-full bg-black">
-                    <img src={post.blog_image} alt="" className={`w-full object-cover ${compact ? "max-h-80" : "max-h-[600px]"}`} loading="lazy" />
+                    <SafeImage src={post.blog_image} alt="" className={`w-full object-cover ${compact ? "max-h-80" : "max-h-[600px]"}`} loading="lazy" />
                 </div>
             )}
 

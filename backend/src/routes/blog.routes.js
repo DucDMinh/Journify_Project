@@ -1,10 +1,10 @@
 import Router from '@koa/router';
-import multer from '@koa/multer';
+import { createUpload } from '../helpers/uploadHelper.js';
 import * as blogController from '../controllers/blogController.js';
 import { verifyToken, optionalAuth } from '../middleware/auth.middleware.js';
 
 const router = new Router({ prefix: '/blogs' });
-const upload = multer();
+const upload = createUpload();
 
 router.get('/', optionalAuth, blogController.getAllBlogs);
 router.get('/:id', optionalAuth, blogController.getBlogById);

@@ -4,10 +4,12 @@ import { HttpError } from '../helpers/httpError.js';
 import { normalizeText } from '../helpers/text.js';
 import { distanceMeters } from '../helpers/geo.js';
 import { REGIONS, normalizeProvinceName, regionKeyOf } from '../config/regions.js';
-import { resolveProvinces } from '../config/provinceMerger.js';
+import { destinationProvinceName, destinationsIn, destinationsMentioned, resolveProvinces } from '../config/provinceMerger.js';
 import { provinceRepo } from '../repositories/provinceRepository.js';
 import { locationRepo } from '../repositories/locationRepository.js';
 import { buildItineraryDays } from './itineraryPlanner.js';
+import { focusAround, focusKeys, hasCoords, keywordAnchors, MIN_FOCUSED_STOPS } from './geoFocus.js';
+import { geocode } from './mapService.js';
 
 const DEFAULT_DAYS = 3;
 const MAX_DAYS = 30;
@@ -16,7 +18,7 @@ const MIN_CANDIDATES = 60;
 const MAX_CANDIDATES = 200;
 const MAX_DESCRIPTION_LENGTH = 100;
 const MAX_DETAILED_STOPS = 40;
-const NEAR_DUPLICATE_METERS = 500;
+const NEAR_DUPLICATE_METERS = 1000;
 
 const PACES = {
     cham: { label: 'chậm, thư giãn', stopsPerDay: 3, stayMinutes: 150 },
@@ -44,7 +46,8 @@ ${provinceNames.join(', ')}.
      hãy ghi tên tỉnh chứa địa danh đó; ghi tên tỉnh cũ cũng được, hệ thống sẽ tự quy đổi sang tỉnh mới.
 2. Nếu khách nhắc tới cung đường hoặc danh hiệu chung (VD: "tứ đại đỉnh đèo", "vòng cung Tây Bắc"), tự suy ra các tỉnh và địa danh
    cốt lõi của hành trình, chia thành nhiều chặng theo thứ tự di chuyển hợp lý.
-3. "keywords": các địa danh cụ thể khách nhắc tới hoặc thuộc hành trình (tên đèo, thác, bản, phố cổ...). Không ghi tên tỉnh vào đây.
+3. "keywords": các địa danh cụ thể khách nhắc tới hoặc thuộc hành trình (tên đèo, thác, bản, phố cổ...). Không ghi tên tỉnh vào đây,
+   nhưng nếu khách nêu thành phố/điểm đến cụ thể (VD: Đà Lạt, Sa Pa, Hội An, Nha Trang) thì PHẢI ghi tên đó vào keywords.
 4. "pace" (nhịp độ): "cham" nếu khách muốn thư giãn, chữa lành, ít điểm; "nhanh" nếu muốn đi nhiều nơi, check-in, lịch dày; còn lại "vua".
 5. "whole_country": true nếu khách muốn đi khắp Việt Nam / xuyên Việt; khi đó chỉ cần ghi chặng xuất phát (nếu khách nói rõ),
    hệ thống tự thêm các tỉnh còn lại theo thứ tự Bắc - Nam.
@@ -153,8 +156,6 @@ const askJson = async (systemPrompt, userPrompt, temperature) => {
     }
 };
 
-const hasCoords = (loc) => Number.isFinite(loc.lat) && Number.isFinite(loc.lng) && !(loc.lat === 0 && loc.lng === 0);
-
 const nameTokens = (loc) => new Set(normalizeText(shortName(loc.name)).split(' ').filter((token) => token.length > 2));
 
 const isSamePlace = (a, b) => {
@@ -197,22 +198,43 @@ const rankCandidates = (locations, keywords, limit) => {
     return groups.flatMap((list) => list.filter((loc) => picked.has(loc)));
 };
 
-const loadCandidates = async (legs, provinces, limit) => {
-    const matched = new Map();
-    const unmatched = [];
-    for (const leg of legs) {
-        const found = resolveProvinces(leg.province_name, provinces);
-        found.forEach((province) => matched.set(province.id, province));
-        if (!found.length) unmatched.push(leg);
-    }
+const MAX_GEOCODED_KEYWORDS = 2;
+
+const legAnchors = async (leg, pool) => {
+    const anchors = keywordAnchors(pool, leg.keywords);
+    if (anchors.length > 0 || focusKeys(leg.keywords).length === 0) return anchors;
+    const geocoded = await Promise.all(leg.keywords.slice(0, MAX_GEOCODED_KEYWORDS).map((keyword) => geocode(keyword).catch(() => null)));
+    return geocoded.filter((point) => point && hasCoords(point));
+};
+
+const loadCandidates = async (legs, provinces, limit, wantedStops) => {
+    const legProvinces = legs.map((leg) => resolveProvinces(leg.province_name, provinces));
+    const matched = new Map(legProvinces.flat().map((province) => [province.id, province]));
+    const unmatched = legs.filter((_, index) => legProvinces[index].length === 0);
 
     const [byProvince, byKeyword] = await Promise.all([
         locationRepo.getByProvincesForAi([...matched.keys()]),
         unmatched.length ? locationRepo.searchByKeywordsForAi(unmatched.flatMap((leg) => [...leg.keywords, leg.province_name])) : [],
     ]);
+
+    const perLegStops = Math.max(MIN_FOCUSED_STOPS, Math.ceil(wantedStops / Math.max(1, legs.length - unmatched.length)));
+    const focusedPools = await Promise.all(
+        legs.map(async (leg, index) => {
+            const ids = new Set(legProvinces[index].map((province) => province.id));
+            if (ids.size === 0) return [];
+            const pool = byProvince.filter((loc) => ids.has(loc.province_id));
+            return focusAround(pool, await legAnchors(leg, pool), perLegStops);
+        }),
+    );
+    const pooled = [...new Map([...focusedPools.flat(), ...byKeyword].map((loc) => [loc.id, loc])).values()];
+    const searchedNames = legs.map((leg, index) => {
+        const destinations = leg.keywords.filter(destinationProvinceName);
+        const provinceLabel = legProvinces[index].map((p) => p.name).join(', ') || leg.province_name;
+        return destinations.length ? `${destinations.join(', ')} (${provinceLabel})` : provinceLabel;
+    });
     return {
-        candidates: rankCandidates([...byProvince, ...byKeyword], legs.flatMap((leg) => leg.keywords), limit),
-        searchedNames: [...[...matched.values()].map((p) => p.name), ...unmatched.map((leg) => leg.province_name)],
+        candidates: rankCandidates(pooled, legs.flatMap((leg) => leg.keywords), limit),
+        searchedNames: [...new Set(searchedNames)],
     };
 };
 
@@ -327,10 +349,24 @@ export const generateItinerary = async ({ prompt, daysCount }) => {
     if (intent.is_valid === false) {
         throw new HttpError(400, intent.error_message || 'Yêu cầu không liên quan đến du lịch.');
     }
-    const legs = (Array.isArray(intent.route_legs) ? intent.route_legs : []).map((leg) => ({
-        province_name: String(leg?.province_name ?? ''),
-        keywords: Array.isArray(leg?.keywords) ? leg.keywords.map(String) : [],
-    }));
+    const legs = (Array.isArray(intent.route_legs) ? intent.route_legs : []).map((leg) => {
+        const provinceName = String(leg?.province_name ?? '');
+        const keywords = [...new Set([...(Array.isArray(leg?.keywords) ? leg.keywords.map(String) : []), ...destinationsIn(provinceName)])];
+        const knownProvince = keywords.map(destinationProvinceName).find(Boolean);
+        return { province_name: knownProvince ?? provinceName, keywords };
+    });
+    const mentioned = destinationsMentioned(cleanPrompt);
+    const coveredProvinces = () => new Set(legs.flatMap((leg) => resolveProvinces(leg.province_name, provinces).map((p) => normalizeProvinceName(p.name))));
+    for (const destination of mentioned) {
+        if (intent.whole_country !== true && !coveredProvinces().has(destination.province)) {
+            legs.push({ province_name: destinationProvinceName(destination.name), keywords: [destination.name] });
+        }
+    }
+    for (const leg of legs) {
+        const legProvinces = new Set(resolveProvinces(leg.province_name, provinces).map((p) => normalizeProvinceName(p.name)));
+        const extra = mentioned.filter((destination) => legProvinces.has(destination.province)).map((destination) => destination.name);
+        leg.keywords = [...new Set([...leg.keywords, ...extra])];
+    }
     if (intent.whole_country === true) {
         legs.push(...provincesNorthToSouth(provinces).map((p) => ({ province_name: p.name, keywords: [] })));
     }
@@ -339,7 +375,7 @@ export const generateItinerary = async ({ prompt, daysCount }) => {
 
     const wantedStops = intent.visit_all === true ? MAX_CANDIDATES : days * PACES[pace].stopsPerDay;
     const candidateLimit = Math.min(MAX_CANDIDATES, Math.max(MIN_CANDIDATES, Math.ceil(wantedStops * 1.5)));
-    const { candidates, searchedNames } = await loadCandidates(legs, provinces, candidateLimit);
+    const { candidates, searchedNames } = await loadCandidates(legs, provinces, candidateLimit, wantedStops);
     if (candidates.length === 0) {
         throw new HttpError(404, `Hệ thống chưa có địa điểm nào cho: ${searchedNames.join(', ') || cleanPrompt}. Vui lòng thử địa danh khác!`);
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/apiClient";
-import { supabase } from "@/utils/supabaseClient";
+import { useAutoRefresh } from "@/hooks/admin/useAutoRefresh";
 import { EMPTY_LOCATION_FORM, Location, LocationFormData, Province } from "@/interface";
 import {
     base64ToFile,
@@ -33,11 +33,12 @@ const readProvinceCache = (): Province[] | null => {
     }
 };
 
-const buildLocationForm = (form: LocationFormData, imageFile: File | null) => {
+const buildLocationForm = (form: LocationFormData, imageFile: File | null, mode: "add" | "edit") => {
     const submitData = new FormData();
-    submitData.append("name", form.name);
+    submitData.append("name", form.name.trim());
     (["description", "note", "lat", "lng", "province_id", "difficulty_level"] as const).forEach((key) => {
-        if (form[key]) submitData.append(key, form[key]);
+        const value = String(form[key] ?? "").trim();
+        if (value || mode === "edit") submitData.append(key, value);
     });
     if (imageFile) submitData.append("image", imageFile);
     return submitData;
@@ -91,26 +92,14 @@ export const useLocationsAdmin = (initialSearch: string) => {
 
     useEffect(() => {
         if (!readProvinceCache()) fetchProvinces();
-        const channel = supabase
-            .channel("admin-provinces")
-            .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => fetchProvinces())
-            .subscribe();
-        return () => {
-            supabase.removeChannel(channel);
-        };
     }, [fetchProvinces]);
 
     useEffect(() => {
         const debounce = setTimeout(fetchLocations, SEARCH_DEBOUNCE_MS);
-        const channel = supabase
-            .channel("admin-locations")
-            .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, () => fetchLocations())
-            .subscribe();
-        return () => {
-            clearTimeout(debounce);
-            supabase.removeChannel(channel);
-        };
+        return () => clearTimeout(debounce);
     }, [fetchLocations]);
+
+    useAutoRefresh(fetchLocations, 60_000);
 
     const resetForm = () => {
         setFormData(EMPTY_LOCATION_FORM);
@@ -206,15 +195,15 @@ export const useLocationsAdmin = (initialSearch: string) => {
             return;
         }
         setIsSaving(true);
-        const toastId = toast.loading(mode === "add" ? "Đang thiết lập tọa độ lên hệ thống..." : "Đang cập nhật địa điểm...");
+        const toastId = toast.loading(mode === "add" ? "Đang thêm địa điểm..." : "Đang cập nhật địa điểm...");
         try {
-            const body = buildLocationForm(formData, imageFile);
+            const body = buildLocationForm(formData, imageFile, mode);
             const { response, data } =
                 mode === "add"
                     ? await api.post("/locations", body)
                     : await api.patch(`/locations/${pickLocation!.id}`, body);
             if (!response.ok) throw new Error(data.message || "Lưu thất bại");
-            toast.success(mode === "add" ? "Khởi tạo không gian thành công!" : "Cập nhật tọa độ thành công!", { id: toastId });
+            toast.success(mode === "add" ? "Đã thêm địa điểm mới!" : "Cập nhật địa điểm thành công!", { id: toastId });
             if (mode === "add") setIsAddModalOpen(false);
             else setIsEditModalOpen(false);
             resetForm();

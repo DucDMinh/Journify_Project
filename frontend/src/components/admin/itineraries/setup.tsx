@@ -3,6 +3,7 @@ import { SetupScreenProp } from "@/interface";
 import { motion } from "framer-motion";
 import { Sparkles, Search, Compass, ChevronRight, MapPin, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import SafeImage from "@/components/common/SafeImage";
 
 export const SetupScreen: React.FC<SetupScreenProp> = (props) => {
     const { selectedProvinces, step } = props;
@@ -130,8 +131,7 @@ export const SetupScreen: React.FC<SetupScreenProp> = (props) => {
                                 className="group cursor-pointer bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-300 hover:border-brand-300 dark:hover:border-brand-700 flex flex-row h-32 sm:h-36"
                             >
                                 <div className="w-32 sm:w-48 overflow-hidden relative shrink-0">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={tpl.image_url || ""} alt={tpl.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                    <SafeImage src={tpl.image_url} alt={tpl.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                     <div className="absolute top-2 left-2 flex flex-wrap gap-1 pr-2">
                                         <span className="bg-brand-500/90 backdrop-blur-md text-white px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm">
                                             {tpl.theme || "Du lịch"}

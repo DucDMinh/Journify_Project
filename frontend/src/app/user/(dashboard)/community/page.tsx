@@ -1,9 +1,8 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bookmark, Crown, Flame, Map, MapPin, PenSquare, Route, Search, Trophy, Users } from "lucide-react";
+import { Bookmark, Crown, Flame, Map, PenSquare, Route, Search, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/apiClient";
 import { CommunityOverview, Itinerary } from "@/interface";
@@ -14,6 +13,11 @@ import { CreatePostModal } from "@/components/modals/user/CreatePostModal";
 import { TripDetailModal2 } from "@/components/modals/user/TripDetailModal2";
 import { removeAccents } from "@/utils/text";
 import { timeAgo } from "@/utils/time";
+import SafeImage from "@/components/common/SafeImage";
+import UserAvatar from "@/components/common/UserAvatar";
+import { cloneItinerary, provinceNames } from "@/lib/itinerary";
+import { formatCost, shortPlaceName } from "@/lib/format";
+import { useRouter } from "next/navigation";
 
 const TOPICS = [
     { icon: "🌍", name: "Tất cả", match: () => true },
@@ -26,8 +30,6 @@ const TOPICS = [
 
 type SortMode = "newest" | "popular";
 
-const formatVnd = (n: number) => `${new Intl.NumberFormat("vi-VN").format(n)} ₫`;
-
 export default function CommunityPage() {
     const { user: currentUser } = useAuth();
     const { posts, isLoading, reload, toggleLike, removePost, setCommentCount } = useBlogFeed();
@@ -37,6 +39,7 @@ export default function CommunityPage() {
     const [sort, setSort] = useState<SortMode>("newest");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [activeTrip, setActiveTrip] = useState<Itinerary | null>(null);
+    const router = useRouter();
 
     useEffect(() => {
         let ignore = false;
@@ -74,54 +77,22 @@ export default function CommunityPage() {
             return;
         }
         const toastId = toast.loading("Đang lưu lộ trình vào sổ tay...");
-        const { response, data } = await api.get<Itinerary>(`/itineraries/${trip.id}`);
-        if (!response.ok || !data.data) {
-            toast.error("Không tải được lộ trình", { id: toastId });
+        const result = await cloneItinerary(trip.id);
+        if (!result.ok) {
+            toast.error(result.message, { id: toastId });
             return;
         }
-        const full = data.data;
-        const payload = {
-            title: `Bản sao - ${full.title}`,
-            summary: full.summary,
-            theme: full.theme,
-            start_date: full.start_date,
-            end_date: full.end_date,
-            days: full.days,
-            nights: full.nights,
-            estimated_cost: full.estimated_cost,
-            image_url: full.image_url,
-            share: false,
-            cloned_from_id: full.id,
-            itinerary_provinces: (full.itinerary_provinces ?? []).map((p) => ({ province_id: p.province_id ?? p.provinces?.id })),
-            itinerary_days: (full.itinerary_days ?? []).map((day) => ({
-                day_number: day.day_number,
-                title: day.title,
-                itinerary_locations: day.itinerary_locations.map((loc) => ({
-                    location_id: loc.location_id,
-                    location_name: loc.location_name,
-                    lat: loc.lat,
-                    lng: loc.lng,
-                    sequence_order: loc.sequence_order,
-                    start_time: loc.start_time,
-                    end_time: loc.end_time,
-                    cost: loc.cost,
-                    activity_note: loc.activity_note,
-                })),
-            })),
-        };
-        const res = await api.post("/itineraries", payload);
-        if (!res.response.ok) {
-            toast.error(res.data.message || "Không lưu được lộ trình", { id: toastId });
-            return;
-        }
-        toast.success(`Đã lưu "${full.title}" vào Lộ trình của tôi`, { id: toastId });
+        toast.success(`Đã lưu "${trip.title}" vào Lộ trình của tôi`, {
+            id: toastId,
+            action: { label: "Xem", onClick: () => router.push("/my-itinerary") },
+        });
     };
 
     return (
         <div className="min-h-screen bg-[var(--bg-paper)] pb-20">
             <div className="relative overflow-hidden bg-slate-900">
                 <div className="absolute inset-0">
-                    <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2000" alt="" className="h-full w-full object-cover opacity-40" />
+                    <SafeImage src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2000" alt="" className="h-full w-full object-cover opacity-40" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-paper)] via-slate-900/60 to-transparent" />
                 </div>
                 <div className="relative z-10 mx-auto max-w-7xl px-4 pb-16 pt-16 text-center sm:px-6 lg:px-8">
@@ -238,14 +209,14 @@ export default function CommunityPage() {
                                     {overview.latestItineraries.map((trip) => (
                                         <li key={trip.id} className="flex gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] p-2.5">
                                             <button onClick={() => openTripDetail(trip)} className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-[var(--border-color)]">
-                                                {trip.image_url && <img src={trip.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                                                <SafeImage src={trip.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
                                             </button>
                                             <div className="min-w-0 flex-1">
                                                 <button onClick={() => openTripDetail(trip)} className="block w-full truncate text-left text-sm font-bold text-[var(--text-main)] hover:underline">
                                                     {trip.title}
                                                 </button>
                                                 <p className="truncate text-xs text-[var(--text-muted)]">
-                                                    {trip.itinerary_provinces?.map((p) => p.provinces?.name).filter(Boolean).join(", ") || "Việt Nam"} · {trip.days ?? "?"} ngày · {formatVnd(trip.estimated_cost ?? 0)}
+                                                    {provinceNames(trip).join(", ") || "Việt Nam"} · {trip.days ?? 1} ngày · {formatCost(trip.estimated_cost, "Tự túc")}
                                                 </p>
                                                 <div className="mt-1.5 flex items-center justify-between">
                                                     <span className="text-[11px] text-[var(--text-muted)]">{timeAgo(trip.created_at ?? new Date().toISOString())}</span>
@@ -273,13 +244,7 @@ export default function CommunityPage() {
                                             <span className={`font-display w-6 text-center text-lg font-bold ${index === 0 ? "text-yellow-500" : index === 1 ? "text-slate-400" : index === 2 ? "text-amber-700" : "text-[var(--text-muted)]"}`}>
                                                 #{index + 1}
                                             </span>
-                                            {row.user.avatar ? (
-                                                <img src={row.user.avatar} alt="" className="h-10 w-10 rounded-full border border-[var(--border-color)] object-cover" />
-                                            ) : (
-                                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-primary)]/15 font-bold text-[var(--accent-primary)]">
-                                                    {row.user.name?.charAt(0).toUpperCase()}
-                                                </span>
-                                            )}
+                                            <UserAvatar src={row.user.avatar} name={row.user.name} className="h-10 w-10 border border-[var(--border-color)]" />
                                             <div className="min-w-0 flex-1">
                                                 <p className="flex items-center gap-1 truncate text-sm font-bold text-[var(--text-main)]">
                                                     {row.user.name}
@@ -310,15 +275,9 @@ export default function CommunityPage() {
                                 <ul className="space-y-2.5">
                                     {overview.hotLocations.map((loc) => (
                                         <li key={loc.id} className="flex items-center gap-3">
-                                            {loc.img ? (
-                                                <img src={loc.img} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
-                                            ) : (
-                                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-paper)] text-[var(--text-muted)]">
-                                                    <MapPin className="h-4 w-4" />
-                                                </span>
-                                            )}
+                                            <SafeImage src={loc.img} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
                                             <div className="min-w-0 flex-1">
-                                                <p className="truncate text-sm font-semibold text-[var(--text-main)]">{loc.name.split(" · ")[0]}</p>
+                                                <p className="truncate text-sm font-semibold text-[var(--text-main)]" title={loc.name}>{shortPlaceName(loc.name)}</p>
                                                 <p className="truncate text-xs text-[var(--text-muted)]">
                                                     {loc.province ?? "Việt Nam"} · {loc.saved_count} lượt lưu
                                                 </p>

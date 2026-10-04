@@ -1,105 +1,87 @@
 import 'dotenv/config';
 import { supabase } from '../src/config/supabaseClient.js';
 
-// Script chạy một lần: lấy ảnh đại diện tỉnh từ Wikipedia và đẩy lên Supabase Storage.
-// Chạy: node scripts/seed-province-images.js (đọc SUPABASE_URL / SUPABASE_SERVICE_KEY từ .env)
-
-// 1. Đổi tên bucket thành 'image'
 const BUCKET_NAME = 'image';
+const USER_AGENT = 'JournifyProvinceImageBot/1.0 (https://github.com/DucDMinh/Journify_Project)';
+const EXTENSION_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const FORCE = process.argv.includes('--force');
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const removeAccents = (str) => {
-    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().replace(/\s+/g, '-');
+const slugify = (str) =>
+    str.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/\s+/g, '-');
+
+const cleanProvinceName = (name) => name.replace(/^(Tỉnh|Thành phố|TP\.)\s*/i, '').trim();
+
+const hasImageSignature = (buffer) => {
+    const hex = buffer.subarray(0, 4).toString('hex');
+    return hex.startsWith('ffd8') || hex === '89504e47' || hex === '47494638' || buffer.subarray(8, 12).toString() === 'WEBP';
 };
 
-async function fetchAndUploadImages() {
-    console.log("🚀 Bắt đầu quá trình: Cào Wiki -> Tải về -> Đẩy lên thư mục province của Supabase...");
-
-    const { data: provinces, error } = await supabase.from('provinces').select('id, name');
-    if (error) return console.error("❌ Lỗi lấy danh sách tỉnh:", error);
-
-    for (const province of provinces) {
-        let cleanName = province.name.replace(/Tỉnh |Thành phố |TP\. /gi, '').trim();
-
-        try {
-            const wikiApiUrl = `https://vi.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(cleanName)}&prop=pageimages&format=json&pithumbsize=800`;
-            const wikiRes = await fetch(wikiApiUrl, {
-                headers: { 'User-Agent': 'VietNamProvinceBot/1.0 (bot@example.com)' }
-            });
-
-            if (!wikiRes.ok) {
-                console.error(`⚠️ Wiki từ chối: ${province.name}`);
-                continue;
-            }
-
-            const rawText = await wikiRes.text();
-            let wikiData;
-            try {
-                wikiData = JSON.parse(rawText);
-            } catch (e) {
-                console.error(`⚠️ Không parse được JSON: ${province.name}`);
-                continue;
-            }
-
-            const pages = wikiData.query.pages;
-            const pageId = Object.keys(pages)[0];
-
-            if (pageId !== "-1" && pages[pageId].thumbnail) {
-                const imageUrl = pages[pageId].thumbnail.source;
-                console.log(`⏳ Đang tải và xử lý ảnh: ${province.name}...`);
-
-                const imageResponse = await fetch(imageUrl);
-                const arrayBuffer = await imageResponse.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
-
-                const safeFileName = `${removeAccents(cleanName)}.jpg`;
-
-                // 2. Thêm tiền tố 'provinces/' vào đường dẫn upload
-                const filePath = `provinces/${safeFileName}`;
-
-                const { error: uploadError } = await supabase.storage
-                    .from(BUCKET_NAME)
-                    .upload(filePath, buffer, {
-                        contentType: 'image/jpeg',
-                        upsert: true
-                    });
-
-                if (uploadError) {
-                    console.error(`❌ Lỗi đẩy ảnh lên Storage (${province.name}):`, uploadError.message);
-                    continue;
-                }
-
-                // 3. Lấy Public URL với đường dẫn mới
-                const { data: publicUrlData } = supabase.storage
-                    .from(BUCKET_NAME)
-                    .getPublicUrl(filePath);
-
-                const finalSupabaseUrl = publicUrlData.publicUrl;
-
-                const { error: updateError } = await supabase
-                    .from('provinces')
-                    .update({ image_url: finalSupabaseUrl })
-                    .eq('id', province.id);
-
-                if (updateError) {
-                    console.error(`❌ Lỗi cập nhật DB (${province.name}):`, updateError.message);
-                } else {
-                    console.log(`✅ Thành công: Đã lưu ảnh của ${province.name} vào image/provinces/`);
-                }
-
-            } else {
-                console.log(`⚠️ Không tìm thấy ảnh trên Wiki cho: ${province.name}`);
-            }
-
-            await delay(1000);
-
-        } catch (err) {
-            console.error(`❌ Lỗi hệ thống khi xử lý ${province.name}:`, err.message);
-        }
+const isWorkingImage = async (url) => {
+    if (!url) return false;
+    try {
+        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+        return res.ok && hasImageSignature(Buffer.from(await res.arrayBuffer()));
+    } catch {
+        return false;
     }
+};
 
-    console.log("🎉 Hoàn tất!");
+const findWikipediaImage = async (title) => {
+    const api = `https://vi.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&format=json&pithumbsize=1200&redirects=1`;
+    const res = await fetch(api, { headers: { 'User-Agent': USER_AGENT } });
+    if (!res.ok) throw new Error(`Wikipedia trả về HTTP ${res.status}`);
+    const pages = (await res.json())?.query?.pages ?? {};
+    return Object.values(pages).find((page) => page.thumbnail?.source)?.thumbnail.source ?? null;
+};
+
+const downloadImage = async (url) => {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    const mimeType = (res.headers.get('content-type') ?? '').split(';')[0].trim();
+    if (!res.ok || !EXTENSION_BY_MIME[mimeType]) {
+        throw new Error(`Không tải được ảnh (HTTP ${res.status}, ${mimeType || 'không rõ định dạng'})`);
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (!hasImageSignature(buffer)) throw new Error('Nội dung tải về không phải ảnh');
+    return { buffer, mimeType };
+};
+
+async function seedProvinceImages() {
+    const { data: provinces, error } = await supabase.from('provinces').select('id, name, image_url').order('name');
+    if (error) throw error;
+
+    let updated = 0;
+    for (const province of provinces) {
+        if (!FORCE && (await isWorkingImage(province.image_url))) continue;
+        const title = cleanProvinceName(province.name);
+        try {
+            const sourceUrl = await findWikipediaImage(title);
+            if (!sourceUrl) {
+                console.log(`⚠️  Không tìm thấy ảnh Wikipedia cho ${province.name}`);
+                continue;
+            }
+            const { buffer, mimeType } = await downloadImage(sourceUrl);
+            const filePath = `provinces/${slugify(title)}.${EXTENSION_BY_MIME[mimeType]}`;
+            const { error: uploadError } = await supabase.storage
+                .from(BUCKET_NAME)
+                .upload(filePath, buffer, { contentType: mimeType, upsert: true });
+            if (uploadError) throw uploadError;
+
+            const publicUrl = `${supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath).data.publicUrl}?v=${Date.now()}`;
+            const { error: updateError } = await supabase.from('provinces').update({ image_url: publicUrl }).eq('id', province.id);
+            if (updateError) throw updateError;
+            updated += 1;
+            console.log(`✅ ${province.name}: ${publicUrl}`);
+        } catch (err) {
+            console.error(`❌ ${province.name}: ${err.message}`);
+        }
+        await delay(1000);
+    }
+    console.log(`Hoàn tất: cập nhật ${updated}/${provinces.length} tỉnh${FORCE ? ' (--force)' : ' có ảnh hỏng hoặc thiếu'}.`);
 }
 
-fetchAndUploadImages();
+seedProvinceImages().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});

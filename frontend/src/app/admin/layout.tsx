@@ -1,5 +1,9 @@
-"use client";
+import type { Metadata } from "next";
 import React from "react";
+
+export const metadata: Metadata = {
+  title: { absolute: "Tổng quan | Quản trị Journify", template: "%s | Quản trị Journify" },
+};
 
 export default function AdminLayout({
   children,

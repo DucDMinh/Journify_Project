@@ -2,6 +2,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { Plus, Star, Info } from "lucide-react";
 import { useState, useRef } from "react";
+import SafeImage from "@/components/common/SafeImage";
 
 export const DraggableLocationCard = ({
     loc,
@@ -58,8 +59,7 @@ export const DraggableLocationCard = ({
                     } ${isAdded ? 'opacity-50 saturate-50' : 'opacity-100'}`}
             >
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 pointer-events-none relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={loc.image_url || loc.img} alt={loc.name} className="h-full w-full object-cover" />
+                    <SafeImage src={loc.image_url || loc.img} alt={loc.name} className="h-full w-full object-cover" />
                     {isAdded && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                             <span className="text-[9px] font-bold text-white uppercase text-center leading-tight">Đã<br />thêm</span>
@@ -114,8 +114,7 @@ export const DraggableLocationCard = ({
                 >
                     {(loc.image_url || loc.img) && (
                         <div className="h-32 w-full bg-gray-100 dark:bg-gray-700 relative">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={loc.image_url || loc.img} alt={loc.name} className="w-full h-full object-cover" />
+                            <SafeImage src={loc.image_url || loc.img} alt={loc.name} className="w-full h-full object-cover" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                             <h4 className="absolute bottom-3 left-4 right-4 text-white font-bold text-lg leading-tight line-clamp-2 shadow-sm">
                                 {loc.name}

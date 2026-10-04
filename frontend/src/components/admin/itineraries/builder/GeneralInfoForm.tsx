@@ -2,6 +2,7 @@ import { Itinerary } from "@/interface";
 import { Switch } from "antd";
 import { Calendar, MapPin } from "lucide-react";
 import { Dispatch, SetStateAction } from "react";
+import { themeOptions } from "@/lib/itinerary";
 
 interface GeneralInfoFormProp {
     currentItinerary: Partial<Itinerary> | undefined,
@@ -43,7 +44,7 @@ export const GeneralInfoForm = ({ currentItinerary, setCurrentItinerary }: Gener
 
                         <input
                             type="date"
-                            min={today}
+                            min={currentItinerary?.start_date && currentItinerary.start_date < today ? undefined : today}
                             value={currentItinerary?.start_date || ''}
                             onChange={(e) => setCurrentItinerary({ ...currentItinerary, start_date: e.target.value })}
                             onClick={(e) => {
@@ -84,10 +85,9 @@ export const GeneralInfoForm = ({ currentItinerary, setCurrentItinerary }: Gener
                     </label>
                     <select value={currentItinerary?.theme || ''} onChange={(e) => setCurrentItinerary({ ...currentItinerary, theme: e.target.value })} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
                         <option value="">Chọn chủ đề...</option>
-                        <option value="Trekking & Khám phá">Trekking & Khám phá</option>
-                        <option value="Nghỉ dưỡng">Nghỉ dưỡng</option>
-                        <option value="Văn hóa - Lịch sử">Văn hóa - Lịch sử</option>
-                        <option value="Ẩm thực">Ẩm thực</option>
+                        {themeOptions(currentItinerary?.theme).map((theme) => (
+                            <option key={theme} value={theme}>{theme}</option>
+                        ))}
                     </select>
                 </div>
             </div>

@@ -5,6 +5,10 @@ import { defineConfig, globalIgnores } from "eslint/config";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["src/components/common/SafeImage.tsx", "src/components/common/UserAvatar.tsx"],
+    rules: { "@next/next/no-img-element": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

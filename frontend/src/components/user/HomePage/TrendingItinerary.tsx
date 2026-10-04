@@ -1,84 +1,92 @@
-/* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
+import { BookmarkPlus, ChevronRight, Compass, TrendingUp, UserRound } from "lucide-react";
 import { Itinerary } from "@/interface";
-import { BookmarkPlus, ChevronRight, Compass, TrendingUp } from "lucide-react";
-import { useRouter } from "next/navigation";
+import SafeImage from "@/components/common/SafeImage";
+import { formatCost } from "@/lib/format";
+import { itineraryAuthor, provinceNames } from "@/lib/itinerary";
 
 interface TrendingItineraryProps {
     trendingItineraries: Itinerary[];
-    setActiveTripDetail: (trip: Itinerary) => void;
+    isLoading: boolean;
     handleCloneTrip: (trip: Itinerary) => void;
-    setActiveNav: (nav: string) => void;
     handleViewDetailItinerary: (id: string) => void;
 }
 
 function TrendingCard({ trip, rank, onOpen, onClone }: { trip: Itinerary; rank: number; onOpen: () => void; onClone: () => void }) {
+    const provinces = provinceNames(trip);
+    const author = itineraryAuthor(trip);
     return (
-        <div onClick={onOpen} className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer group">
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onOpen}
+            onKeyDown={(event) => event.key === "Enter" && onOpen()}
+            className="group cursor-pointer overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-sm transition-all hover:shadow-lg"
+        >
             <div className="relative h-44 overflow-hidden">
-                <img src={trip.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800'} alt={trip.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1"><TrendingUp className="w-3 h-3 text-[var(--accent-gold)]" /> #{rank}</div>
-                <button onClick={(e) => { e.stopPropagation(); onClone(); }} className="absolute bottom-2 right-2 p-2 rounded-full bg-white/90 text-[var(--text-main)] hover:bg-[var(--accent-primary)] hover:text-white transition shadow-md" title="Lưu lộ trình"><BookmarkPlus className="w-4 h-4" /></button>
+                <SafeImage src={trip.image_url} alt={trip.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-xs font-bold text-white backdrop-blur-sm">
+                    <TrendingUp className="h-3 w-3 text-[var(--accent-gold)]" /> #{rank}
+                </div>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onClone();
+                    }}
+                    className="absolute bottom-2 right-2 rounded-full bg-white/90 p-2 text-slate-800 shadow-md transition hover:bg-[var(--accent-primary)] hover:text-white"
+                    title="Lưu vào Lộ trình của tôi"
+                    aria-label="Lưu vào Lộ trình của tôi"
+                >
+                    <BookmarkPlus className="h-4 w-4" />
+                </button>
             </div>
             <div className="p-4">
-                <h4 className="font-display font-bold text-sm line-clamp-1">{trip.title}</h4>
-                <p className="text-xs text-[var(--text-muted)] mt-1">{trip.itinerary_provinces?.map(p => p.provinces?.name).join(" - ") || "Việt Nam"}</p>
-                <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs font-semibold text-[var(--accent-gold)]">{trip.estimated_cost ? `${trip.estimated_cost.toLocaleString('vi-VN')}đ` : "Tự túc"}</span>
+                <h4 className="font-display line-clamp-1 text-sm font-bold">{trip.title}</h4>
+                <p className="mt-1 line-clamp-1 text-xs text-[var(--text-muted)]">{provinces.length ? provinces.join(" - ") : "Việt Nam"}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[var(--accent-gold)]">{formatCost(trip.estimated_cost, "Tự túc")}</span>
                     <span className="text-xs text-[var(--text-muted)]">{trip.days || 1} ngày</span>
                 </div>
+                {author?.name && (
+                    <p className="mt-2 flex items-center gap-1 truncate text-[11px] text-[var(--text-muted)]">
+                        <UserRound className="h-3 w-3" /> {author.name}
+                    </p>
+                )}
             </div>
         </div>
     );
 }
 
-export const TrendingItinerary = ({ trendingItineraries, handleCloneTrip, handleViewDetailItinerary }: TrendingItineraryProps) => {
-    const router = useRouter();
-    return (
-        <section className="w-full min-w-0"> {/* 🌟 Khóa chiều rộng, chống vỡ layout */}
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="font-display text-2xl font-bold flex items-center gap-2">
-                        <TrendingUp className="w-6 h-6 text-[var(--accent-primary)]" /> Lộ trình nổi bật
-                    </h2>
-                    <p className="text-sm text-[var(--text-muted)] mt-1">Được cộng đồng yêu thích nhất tuần này</p>
-                </div>
-                <button
-                    onClick={() => router.push('/itineraries')}
-                    className="text-sm font-bold text-[var(--accent-primary)] hover:underline flex items-center gap-1"
-                >
-                    Xem tất cả <ChevronRight className="w-4 h-4" />
-                </button>
+export const TrendingItinerary = ({ trendingItineraries, isLoading, handleCloneTrip, handleViewDetailItinerary }: TrendingItineraryProps) => (
+    <section className="w-full min-w-0">
+        <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+                <h2 className="font-display flex items-center gap-2 text-2xl font-bold">
+                    <TrendingUp className="h-6 w-6 text-[var(--accent-primary)]" /> Lộ trình nổi bật
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">Được cộng đồng lưu nhiều nhất tuần này</p>
             </div>
-            <div
-                className="flex overflow-x-auto gap-4 sm:gap-6 pb-6 snap-x snap-mandatory w-full 
-                [&::-webkit-scrollbar]:h-2 
-                [&::-webkit-scrollbar-track]:bg-transparent 
-                [&::-webkit-scrollbar-thumb]:bg-[var(--border-color)] 
-                hover:[&::-webkit-scrollbar-thumb]:bg-[var(--text-muted)] 
-                [&::-webkit-scrollbar-thumb]:rounded-full 
-                transition-colors"
-            >
-                {trendingItineraries.map((trip, idx) => (
-                    <div
-                        key={trip.id}
-                        className="snap-start shrink-0 w-[85vw] sm:w-[350px]"
-                    >
-                        <TrendingCard
-                            trip={trip}
-                            rank={idx + 1}
-                            onOpen={() => handleViewDetailItinerary(trip.id)}
-                            onClone={() => handleCloneTrip(trip)}
-                        />
+            <Link href="/itineraries" className="flex shrink-0 items-center gap-1 text-sm font-bold text-[var(--accent-primary)] hover:underline">
+                Xem tất cả <ChevronRight className="h-4 w-4" />
+            </Link>
+        </div>
+        <div className="flex w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-6 sm:gap-6 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--border-color)] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-2">
+            {isLoading &&
+                Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="h-72 w-[85vw] shrink-0 animate-pulse rounded-2xl bg-[var(--border-color)] sm:w-[350px]" />
+                ))}
+            {!isLoading &&
+                trendingItineraries.map((trip, idx) => (
+                    <div key={trip.id} className="w-[85vw] shrink-0 snap-start sm:w-[350px]">
+                        <TrendingCard trip={trip} rank={idx + 1} onOpen={() => handleViewDetailItinerary(trip.id)} onClone={() => handleCloneTrip(trip)} />
                     </div>
                 ))}
-
-                {trendingItineraries.length === 0 && (
-                    <div className="w-full flex flex-col items-center justify-center text-center py-10 text-[var(--text-muted)]">
-                        <Compass className="w-10 h-10 mx-auto opacity-30 mb-2" />
-                        <p>Chưa có lộ trình nổi bật. Hãy là người đầu tiên chia sẻ!</p>
-                    </div>
-                )}
-            </div>
-        </section>
-    )
-}
+            {!isLoading && trendingItineraries.length === 0 && (
+                <div className="flex w-full flex-col items-center justify-center py-10 text-center text-[var(--text-muted)]">
+                    <Compass className="mx-auto mb-2 h-10 w-10 opacity-30" />
+                    <p>Chưa có lộ trình nổi bật. Hãy là người đầu tiên chia sẻ!</p>
+                </div>
+            )}
+        </div>
+    </section>
+);

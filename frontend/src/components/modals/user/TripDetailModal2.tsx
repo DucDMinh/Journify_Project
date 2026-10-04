@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @next/next/no-img-element */
-import { Itinerary, Itinerary_days, Itinerary_locations, User, asUserRef } from "@/interface";
+import { Itinerary, Itinerary_days, Itinerary_locations, User } from "@/interface";
 import { BookmarkPlus, CheckCircle2, Circle, Compass, Luggage, MapPin, Share2, X, Navigation, Map } from "lucide-react";
 import { useState } from "react";
 import { motion, Variants } from "framer-motion";
-import { useDashboard } from "@/app/user/(dashboard)/layout";
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
+import SafeImage from "@/components/common/SafeImage";
+import { formatCost, formatTimeRange } from "@/lib/format";
+import { itineraryAuthor, itineraryShareUrl, provinceNames } from "@/lib/itinerary";
 
 const RouteMapViewer = dynamic(() => import("@/components/admin/itineraries/builder/RouteMapViewer"), {
     ssr: false,
@@ -19,7 +21,10 @@ const RouteMapViewer = dynamic(() => import("@/components/admin/itineraries/buil
 
 export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: { itinerary: Itinerary; onClose: () => void; onClone: () => void, currentUser: User | null }) => {
     const [activeTab, setActiveTab] = useState<"itinerary" | "checklist" | "map">("itinerary");
-    const destination = itinerary.itinerary_provinces?.map(ip => ip.provinces?.name).join(" - ") || "Việt Nam";
+    const destination = provinceNames(itinerary).join(" - ") || "Việt Nam";
+    const author = itineraryAuthor(itinerary);
+    const isSaved = !itinerary.id.startsWith("ai-");
+    const isOwnTrip = isSaved && Boolean(currentUser && author?.id && author.id === currentUser.id);
 
     const defaultChecklist = [
         { item: "Căn cước công dân / Hộ chiếu", checked: true },
@@ -28,8 +33,26 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
         { item: "Đồ dùng cá nhân", checked: false }
     ];
 
-    const { notify } = useDashboard();
     const [checklist, setChecklist] = useState(defaultChecklist);
+
+    const shareTrip = async () => {
+        if (!isSaved || !itinerary.share) {
+            toast.info("Lộ trình cần được lưu và bật chế độ công khai trước khi chia sẻ");
+            return;
+        }
+        const url = itineraryShareUrl(itinerary.id);
+        try {
+            if (navigator.share) {
+                await navigator.share({ title: itinerary.title, url });
+                return;
+            }
+            await navigator.clipboard.writeText(url);
+            toast.success("Đã sao chép liên kết chia sẻ lộ trình!");
+        } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            toast.error("Không sao chép được liên kết, hãy thử lại");
+        }
+    };
 
     const toggleCheck = (idx: number) => {
         setChecklist((prev) => prev.map((item, i) => i === idx ? { ...item, checked: !item.checked } : item));
@@ -67,7 +90,7 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                         </div>
 
                         <div className="relative h-48 sm:h-56 rounded-2xl overflow-hidden shadow-md mb-6 border border-[var(--border-color)] shrink-0">
-                            <img src={itinerary.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800'} alt={itinerary.title} className="w-full h-full object-cover" />
+                            <SafeImage src={itinerary.image_url} alt={itinerary.title} className="w-full h-full object-cover" />
                             <WashiTape color="var(--washi-coral)" className="top-3 left-3 w-24 -rotate-6" />
                         </div>
                         <h2
@@ -86,24 +109,28 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                             <div className="flex justify-between items-center gap-4">
                                 <span className="text-[var(--text-muted)] shrink-0">Ngân sách dự kiến:</span>
                                 <span className="text-[var(--accent-gold)] font-bold bg-[var(--accent-gold)]/10 px-2.5 py-1 rounded-lg text-right">
-                                    {itinerary.estimated_cost ? itinerary.estimated_cost.toLocaleString('vi-VN') + " đ" : "Tự túc"}
+                                    {formatCost(itinerary.estimated_cost, "Tự túc")}
                                 </span>
                             </div>
                             <div className="flex justify-between items-center gap-4">
                                 <span className="text-[var(--text-muted)] shrink-0">Tác giả lộ trình:</span>
                                 <span className="font-semibold text-right truncate">
-                                    {asUserRef(itinerary.user_id)?.name || currentUser?.name || "Ẩn danh"}
+                                    {author?.name || (isSaved ? "Thành viên Journify" : currentUser?.name || "Bạn")}
                                 </span>
                             </div>
                         </div>
                     </div>
                     <div className="mt-4 pt-4 flex gap-3 shrink-0 bg-[var(--bg-bento)]">
-                        <button onClick={() => { onClone(); onClose(); }} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-[0_4px_12px_rgba(var(--accent-primary-rgb),0.3)] hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
-                            <BookmarkPlus className="w-4 h-4" /> Lưu vào sổ tay
-                        </button>
-                        <button onClick={() => notify("Đã sao chép liên kết chia sẻ lộ trình!", "🔗")} className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:border-[var(--accent-primary)] transition-colors shadow-sm" title="Chia sẻ">
-                            <Share2 className="w-4 h-4" />
-                        </button>
+                        {!isOwnTrip && (
+                            <button onClick={() => { onClone(); onClose(); }} className="flex-1 py-3.5 rounded-xl bg-[var(--accent-primary)] text-white font-bold text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                                <BookmarkPlus className="w-4 h-4" /> {isSaved ? "Lưu vào sổ tay" : "Lưu lộ trình này"}
+                            </button>
+                        )}
+                        {isSaved && (
+                            <button onClick={shareTrip} className={`${isOwnTrip ? "flex-1 flex items-center justify-center gap-2 text-sm font-bold" : ""} p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:border-[var(--accent-primary)] transition-colors shadow-sm`} title="Chia sẻ">
+                                <Share2 className="w-4 h-4" />{isOwnTrip && " Chia sẻ"}
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="flex-1 flex flex-col overflow-hidden bg-[var(--bg-paper)]">
@@ -156,10 +183,10 @@ export const TripDetailModal2 = ({ itinerary, onClose, onClone, currentUser }: {
                                                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
                                                                         <h5 className="font-bold text-base flex items-center gap-2 group-hover:text-[var(--accent-primary)] transition-colors">
                                                                             <Navigation className="w-4 h-4 text-[var(--accent-gold)]" />
-                                                                            {loc.location_name}
+                                                                            {loc.location_name || loc.locations?.name || "Hoạt động tự do"}
                                                                         </h5>
                                                                         <span className="inline-flex items-center text-xs font-bold bg-[var(--bg-bento)] text-[var(--text-muted)] px-2.5 py-1 rounded-md shrink-0 border border-[var(--border-color)]">
-                                                                            {loc.start_time.slice(0, 5)} {loc.end_time ? ` - ${loc.end_time.slice(0, 5)}` : ''}
+                                                                            {formatTimeRange(loc.start_time, loc.end_time)}
                                                                         </span>
                                                                     </div>
                                                                     {loc.activity_note && (

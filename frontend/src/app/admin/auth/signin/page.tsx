@@ -38,9 +38,11 @@ function AdminSignInScreen() {
   const error_message = searchParams.get("error_message");
 
   useEffect(() => {
-    if (error_message === "TOKEN_EXPIRED") {
-      toast.error("Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại!");
-    }
+    const cookieError = document.cookie.split("; ").find((part) => part.startsWith("toast_error="))?.split("=")[1];
+    const reason = error_message ?? cookieError;
+    if (reason === "TOKEN_EXPIRED") toast.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại!");
+    else if (reason === "unauthorized") toast.error("Vui lòng đăng nhập bằng tài khoản Quản trị viên.");
+    if (cookieError) document.cookie = "toast_error=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
   }, [error_message]);
 
   const handleSubmit = async (e: React.FormEvent) => {

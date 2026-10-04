@@ -1,7 +1,8 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { supabase } from "@/utils/supabaseClient";
+import { useAutoRefresh } from "@/hooks/admin/useAutoRefresh";
+import { matchesSearch } from "@/lib/format";
 import { toast } from 'sonner';
 import { Plus, MapPin, Search, Globe, Sparkles, Map } from "lucide-react";
 import { Province } from "@/interface";
@@ -24,45 +25,39 @@ export default function ProvincesPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isListModalOpen, setIsListModalOpen] = useState(false);
 
+    const fetchProvinces = useCallback(async () => {
+        const { response, data } = await api.get<Province[]>("/provinces");
+        if (!response.ok) toast.error(data.message || "Không thể tải danh sách tỉnh/thành phố!");
+        else setProvinces(data.data ?? []);
+        setIsLoading(false);
+    }, []);
+
     const executeDelete = async (id: string, name: string) => {
-        const toastId = toast.loading(`Đang vô hiệu hóa "${name}"...`);
-        try {
-            const { response, data } = await api.delete(`/provinces/${id}`);
-
-            if (!response.ok) {
-                throw new Error(data.message || "Lỗi khi xóa tỉnh thành");
-            }
-
-            toast.success(`Đã xóa "${name}" thành công!`, { id: toastId });
-            sessionStorage.removeItem("provinces_cache");
-            fetchProvinces();
-        } catch {
-            toast.error("Xóa thất bại! Vui lòng thử lại.", { id: toastId });
+        const toastId = toast.loading(`Đang xóa "${name}"...`);
+        const { response, data } = await api.delete(`/provinces/${id}`);
+        if (!response.ok) {
+            toast.error(data.message || "Xóa thất bại! Vui lòng thử lại.", { id: toastId, duration: 6000 });
+            return;
         }
-    };
-
-    const fetchProvinces = async () => {
-        setIsLoading(true);
-        try {
-            const { response, data } = await api.get<Province[]>("/provinces");
-            if (!response.ok) throw new Error(data.message);
-            setProvinces(data.data ?? []);
-        } catch {
-            toast.error("Không thể tải danh sách tỉnh/thành phố!");
-        } finally {
-            setIsLoading(false);
-        }
+        toast.success(`Đã xóa "${name}" thành công!`, { id: toastId });
+        sessionStorage.removeItem("provinces_cache");
+        fetchProvinces();
     };
 
     useEffect(() => {
-        fetchProvinces();
-        const provinceChannel = supabase.channel("admin-provinces-page")
-            .on("postgres_changes", { event: "*", schema: "public", table: "provinces" }, () => fetchProvinces())
-            .subscribe();
+        let ignore = false;
+        api.get<Province[]>("/provinces").then(({ response, data }) => {
+            if (ignore) return;
+            if (!response.ok) toast.error(data.message || "Không thể tải danh sách tỉnh/thành phố!");
+            else setProvinces(data.data ?? []);
+            setIsLoading(false);
+        });
         return () => {
-            supabase.removeChannel(provinceChannel);
+            ignore = true;
         };
     }, []);
+
+    useAutoRefresh(fetchProvinces, 60_000);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value);
@@ -80,7 +75,7 @@ export default function ProvincesPage() {
                 throw new Error(data.message || "Lỗi khi thêm tỉnh thành");
             }
 
-            toast.success("Khởi tạo không gian thành công!", { id: toastId });
+            toast.success("Đã thêm tỉnh/thành phố mới!", { id: toastId });
             setIsAddModalOpen(false);
             sessionStorage.removeItem("provinces_cache");
             fetchProvinces();
@@ -98,16 +93,16 @@ export default function ProvincesPage() {
         }
 
         setIsSaving(true);
-        const toastId = toast.loading("Đang tái cấu trúc tỉnh/thành phố...");
+        const toastId = toast.loading("Đang cập nhật tỉnh/thành phố...");
 
         try {
             const { response, data } = await api.patch(`/provinces/${pickProvince.id}`, submitData);
 
             if (!response.ok) {
-                throw new Error(data.message || "Lỗi khi sửa địa điểm");
+                throw new Error(data.message || "Lỗi khi cập nhật tỉnh/thành phố");
             }
 
-            toast.success("Cập nhật tọa độ thành công!", { id: toastId });
+            toast.success("Cập nhật tỉnh/thành phố thành công!", { id: toastId });
             setIsEditModalOpen(false);
             setPickProvince(undefined);
             sessionStorage.removeItem("provinces_cache");
@@ -122,7 +117,7 @@ export default function ProvincesPage() {
     const ITEMS_PER_PAGE = 10;
     const filteredProvinces = provinces.filter((province) => {
         if (!searchQuery) return true;
-        return province.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesSearch(searchQuery, province.name);
     });
     const calculatedTotalPages = Math.ceil(filteredProvinces.length / ITEMS_PER_PAGE) || 1;
 

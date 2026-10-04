@@ -1,12 +1,13 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Image as ImageIcon, MapPin, Smile, Trash2 } from "lucide-react";
+import { X, Image as ImageIcon, MapPin, Smile, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/apiClient";
 import { User } from "@/interface";
+import UserAvatar from "@/components/common/UserAvatar";
+import SafeImage from "@/components/common/SafeImage";
 
 const EMOTIONS = [
     { id: 'excited', icon: '🤩', label: 'Hào hứng' },
@@ -15,6 +16,10 @@ const EMOTIONS = [
     { id: 'wonderful', icon: '🌟', label: 'Tuyệt vời' },
     { id: 'wanderlust', icon: '✈️', label: 'Cuồng chân' },
 ];
+
+const MAX_CONTENT_LENGTH = 5000;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_IMAGES = "image/jpeg,image/png,image/webp,image/gif";
 
 interface CreatePostModalProps {
     onClose: () => void;
@@ -27,84 +32,82 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
     const [location, setLocation] = useState("");
     const [showLocationInput, setShowLocationInput] = useState(false);
     const [showEmotionPicker, setShowEmotionPicker] = useState(false);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [image, setImage] = useState<File | null>(null)
-    const [selectedEmotion, setSelectedEmotion] = useState<{ id: string, icon: string, label: string } | null>(null);
-
-    const handleCreateBlog = async () => {
-        try {
-            const submitData = new FormData();
-            submitData.append('content', content);
-            if (image) submitData.append('blog_image', image);
-            submitData.append('location', location);
-            if (selectedEmotion) submitData.append('emotion', selectedEmotion?.label)
-            if (currentUser) submitData.append('user_id', currentUser.id)
-
-            const { data, response } = await api.post('/blogs', submitData);
-            if (!response.ok) throw new Error(data.message);
-            onSuccess();
-            onClose();
-            toast.success("Đã đăng bài");
-        } catch (error) {
-            toast.error(`${error}`)
-        }
-    }
+    const [image, setImage] = useState<File | null>(null);
+    const [selectedEmotion, setSelectedEmotion] = useState<(typeof EMOTIONS)[number] | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const imagePreview = useMemo(() => (image ? URL.createObjectURL(image) : null), [image]);
+
+    useEffect(() => () => {
+        if (imagePreview) URL.revokeObjectURL(imagePreview);
+    }, [imagePreview]);
+
+    const removeImage = () => {
+        setImage(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            setImage(file);
-            const previewUrl = URL.createObjectURL(file);
-            setImagePreview(previewUrl);
+        if (!file) return;
+        if (!ACCEPTED_IMAGES.split(",").includes(file.type)) {
+            toast.error("Chỉ chấp nhận ảnh JPEG, PNG, WEBP hoặc GIF");
+            e.target.value = "";
+            return;
         }
+        if (file.size > MAX_IMAGE_BYTES) {
+            toast.error("Ảnh không được vượt quá 5MB");
+            e.target.value = "";
+            return;
+        }
+        setImage(file);
     };
-    const toggleLocation = () => {
-        setShowLocationInput(!showLocationInput);
-        setShowEmotionPicker(false);
+
+    const trimmedContent = content.trim();
+    const isValidToPost = trimmedContent.length > 0 && content.length <= MAX_CONTENT_LENGTH && !isSubmitting;
+
+    const handleCreateBlog = async () => {
+        if (!isValidToPost) return;
+        setIsSubmitting(true);
+        const submitData = new FormData();
+        submitData.append('content', trimmedContent);
+        if (image) submitData.append('blog_image', image);
+        if (location.trim()) submitData.append('location', location.trim());
+        if (selectedEmotion) submitData.append('emotion', selectedEmotion.label);
+
+        const { data, response } = await api.post('/blogs', submitData);
+        setIsSubmitting(false);
+        if (!response.ok) {
+            toast.error(data.message || "Không đăng được bài viết, vui lòng thử lại");
+            return;
+        }
+        onSuccess();
+        onClose();
+        toast.success("Đã đăng bài");
     };
-    const toggleEmotion = () => {
-        setShowEmotionPicker(!showEmotionPicker);
-        setShowLocationInput(false);
-    };
-    const isValidToPost = content.trim().length > 0 || imagePreview !== null;
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !isSubmitting && onClose()} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
             <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-lg bg-[var(--bg-card)] rounded-[24px] shadow-2xl border border-[var(--border-color)] overflow-hidden flex flex-col max-h-[90vh]"
+                className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl"
             >
-                <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
-                    <h2 className="text-xl font-bold text-[var(--text-main)] font-display mx-auto">
-                        Tạo bài viết mới
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="absolute right-4 p-2 bg-[var(--bg-paper)] hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-[var(--text-muted)] transition-colors"
-                    >
-                        <X className="w-5 h-5" />
+                <div className="flex items-center justify-between border-b border-[var(--border-color)] px-6 py-4">
+                    <h2 className="font-display mx-auto text-xl font-bold text-[var(--text-main)]">Tạo bài viết mới</h2>
+                    <button onClick={onClose} disabled={isSubmitting} className="absolute right-4 rounded-full bg-[var(--bg-paper)] p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-bento)]" aria-label="Đóng">
+                        <X className="h-5 w-5" />
                     </button>
                 </div>
-                <div className="p-6 overflow-y-auto hide-scrollbar flex-1">
-                    <div className="flex items-start gap-3 mb-4">
-                        <img
-                            src={currentUser?.avatar || "https://i.pravatar.cc/150"}
-                            alt="avatar"
-                            className="w-12 h-12 rounded-full object-cover border border-[var(--border-color)] mt-1"
-                        />
+                <div className="flex-1 overflow-y-auto p-6">
+                    <div className="mb-4 flex items-start gap-3">
+                        <UserAvatar src={currentUser?.avatar} name={currentUser?.name} className="mt-1 h-12 w-12 border border-[var(--border-color)]" />
                         <div>
-                            <h3 className="font-bold text-[16px] text-[var(--text-main)] leading-snug">
+                            <h3 className="text-[16px] font-bold leading-snug text-[var(--text-main)]">
                                 {currentUser?.name || "Người dùng"}
                                 {selectedEmotion && (
                                     <span className="font-normal text-[var(--text-muted)]">
@@ -112,13 +115,11 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
                                     </span>
                                 )}
                             </h3>
-                            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                                <span className="text-[12px] font-semibold bg-[var(--bg-paper)] text-[var(--text-muted)] px-2 py-0.5 rounded-md">
-                                    Công khai
-                                </span>
-                                {location && (
-                                    <span className="text-[12px] font-semibold bg-rose-50 text-rose-500 dark:bg-rose-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                        <MapPin className="w-3 h-3" /> {location}
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="rounded-md bg-[var(--bg-paper)] px-2 py-0.5 text-[12px] font-semibold text-[var(--text-muted)]">Công khai</span>
+                                {location.trim() && (
+                                    <span className="flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[12px] font-semibold text-rose-500 dark:bg-rose-500/20">
+                                        <MapPin className="h-3 w-3" /> {location}
                                     </span>
                                 )}
                             </div>
@@ -127,17 +128,17 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
                     <textarea
                         placeholder="Bạn muốn chia sẻ hành trình gì hôm nay?"
                         value={content}
+                        maxLength={MAX_CONTENT_LENGTH}
                         onChange={(e) => setContent(e.target.value)}
-                        className="w-full bg-transparent text-[var(--text-main)] text-[16px] placeholder-[var(--text-muted)] resize-none outline-none min-h-[50px]"
+                        className="min-h-[90px] w-full resize-none bg-transparent text-[16px] text-[var(--text-main)] outline-none placeholder:text-[var(--text-muted)]"
+                        autoFocus
                     />
+                    <p className="text-right text-[11px] text-[var(--text-muted)]">{content.length}/{MAX_CONTENT_LENGTH}</p>
                     {imagePreview && (
-                        <div className="relative mt-2 rounded-2xl overflow-hidden border border-[var(--border-color)] bg-[var(--bg-paper)]">
-                            <img src={imagePreview} alt="Preview" className="w-full max-h-[300px] object-cover" />
-                            <button
-                                onClick={() => setImagePreview(null)}
-                                className="absolute top-2 right-2 p-2 bg-white/80 hover:bg-white text-rose-500 rounded-full shadow-md backdrop-blur-md transition-colors"
-                            >
-                                <Trash2 className="w-5 h-5" />
+                        <div className="relative mt-2 overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-paper)]">
+                            <SafeImage src={imagePreview} alt="Ảnh xem trước" className="max-h-[300px] w-full object-cover" />
+                            <button onClick={removeImage} className="absolute right-2 top-2 rounded-full bg-white/80 p-2 text-rose-500 shadow-md backdrop-blur-md transition-colors hover:bg-white" aria-label="Gỡ ảnh">
+                                <Trash2 className="h-5 w-5" />
                             </button>
                         </div>
                     )}
@@ -148,29 +149,25 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 exit={{ opacity: 0, height: 0 }}
-                                className="mt-4 flex items-center gap-2 px-4 py-2 bg-[var(--bg-paper)] rounded-xl border border-[var(--border-color)]"
+                                className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] px-4 py-2"
                             >
-                                <MapPin className="w-5 h-5 text-rose-500" />
+                                <MapPin className="h-5 w-5 text-rose-500" />
                                 <input
                                     type="text"
                                     placeholder="Bạn đang ở đâu?"
                                     value={location}
+                                    maxLength={120}
                                     onChange={(e) => setLocation(e.target.value)}
-                                    className="flex-1 bg-transparent text-sm outline-none text-[var(--text-main)]"
+                                    className="flex-1 bg-transparent text-sm text-[var(--text-main)] outline-none"
                                     autoFocus
                                 />
-                                <button onClick={() => setShowLocationInput(false)} className="text-[var(--text-muted)]">
-                                    <X className="w-4 h-4" />
+                                <button onClick={() => setShowLocationInput(false)} className="text-[var(--text-muted)]" aria-label="Ẩn ô vị trí">
+                                    <X className="h-4 w-4" />
                                 </button>
                             </motion.div>
                         )}
                         {showEmotionPicker && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="mt-4 overflow-hidden"
-                            >
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-4 overflow-hidden">
                                 <div className="flex flex-wrap items-center gap-2 p-1">
                                     {EMOTIONS.map((emo) => (
                                         <button
@@ -179,10 +176,11 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
                                                 setSelectedEmotion(selectedEmotion?.id === emo.id ? null : emo);
                                                 setShowEmotionPicker(false);
                                             }}
-                                            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-all border ${selectedEmotion?.id === emo.id
-                                                ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30 shadow-sm'
-                                                : 'bg-[var(--bg-paper)] text-[var(--text-muted)] border-[var(--border-color)] hover:border-amber-300 hover:text-[var(--text-main)]'
-                                                }`}
+                                            className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition-all ${
+                                                selectedEmotion?.id === emo.id
+                                                    ? 'border-amber-200 bg-amber-100 text-amber-700 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-400'
+                                                    : 'border-[var(--border-color)] bg-[var(--bg-paper)] text-[var(--text-muted)] hover:border-amber-300 hover:text-[var(--text-main)]'
+                                            }`}
                                         >
                                             {emo.icon} {emo.label}
                                         </button>
@@ -192,48 +190,52 @@ export function CreatePostModal({ onClose, currentUser, onSuccess }: CreatePostM
                         )}
                     </AnimatePresence>
                 </div>
-                <div className="p-4 border-t border-[var(--border-color)] bg-[var(--bg-card)]">
-                    <div className="flex items-center justify-between p-3 mb-4 rounded-xl border border-[var(--border-color)] shadow-sm bg-[var(--bg-paper)]">
-                        <span className="text-sm font-semibold text-[var(--text-main)] px-2">Thêm vào bài viết</span>
+                <div className="border-t border-[var(--border-color)] bg-[var(--bg-card)] p-4">
+                    <div className="mb-4 flex items-center justify-between rounded-xl border border-[var(--border-color)] bg-[var(--bg-paper)] p-3 shadow-sm">
+                        <span className="px-2 text-sm font-semibold text-[var(--text-main)]">Thêm vào bài viết</span>
                         <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors"
-                            >
-                                <ImageIcon className="w-6 h-6 text-emerald-500" />
+                            <button onClick={() => fileInputRef.current?.click()} className="rounded-full p-2 transition-colors hover:bg-[var(--bg-bento)]" title="Thêm ảnh" aria-label="Thêm ảnh">
+                                <ImageIcon className="h-6 w-6 text-emerald-500" />
                             </button>
-                            <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                ref={fileInputRef}
-                                onChange={handleImageChange}
-                            />
+                            <input type="file" accept={ACCEPTED_IMAGES} className="hidden" ref={fileInputRef} onChange={handleImageChange} />
                             <button
-                                onClick={toggleLocation}
-                                className={`p-2 rounded-full transition-colors ${showLocationInput || location ? 'bg-rose-50 dark:bg-rose-500/20' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                                onClick={() => {
+                                    setShowLocationInput(!showLocationInput);
+                                    setShowEmotionPicker(false);
+                                }}
+                                className={`rounded-full p-2 transition-colors ${showLocationInput || location ? 'bg-rose-50 dark:bg-rose-500/20' : 'hover:bg-[var(--bg-bento)]'}`}
+                                title="Thêm vị trí"
+                                aria-label="Thêm vị trí"
                             >
-                                <MapPin className="w-6 h-6 text-rose-500" />
+                                <MapPin className="h-6 w-6 text-rose-500" />
                             </button>
                             <button
-                                onClick={toggleEmotion}
-                                className={`p-2 rounded-full transition-colors ${showEmotionPicker || selectedEmotion ? 'bg-amber-50 dark:bg-amber-500/20' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                                onClick={() => {
+                                    setShowEmotionPicker(!showEmotionPicker);
+                                    setShowLocationInput(false);
+                                }}
+                                className={`rounded-full p-2 transition-colors ${showEmotionPicker || selectedEmotion ? 'bg-amber-50 dark:bg-amber-500/20' : 'hover:bg-[var(--bg-bento)]'}`}
+                                title="Cảm xúc"
+                                aria-label="Cảm xúc"
                             >
-                                <Smile className="w-6 h-6 text-amber-500" />
+                                <Smile className="h-6 w-6 text-amber-500" />
                             </button>
                         </div>
                     </div>
 
                     <button
-                        onClick={() => { handleCreateBlog() }}
+                        onClick={handleCreateBlog}
                         disabled={!isValidToPost}
-                        className={`w-full py-3.5 rounded-xl font-bold text-[15px] transition-all ${isValidToPost
-                            ? "bg-[var(--accent-primary)] text-white shadow-lg hover:shadow-[var(--accent-primary)]/25 hover:-translate-y-0.5"
-                            : "bg-gray-200 text-gray-400 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed"
-                            }`}
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[15px] font-bold transition-all ${
+                            isValidToPost
+                                ? "bg-[var(--accent-primary)] text-white shadow-lg hover:-translate-y-0.5"
+                                : "cursor-not-allowed bg-[var(--bg-bento)] text-[var(--text-muted)]"
+                        }`}
                     >
-                        Đăng bài
+                        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {isSubmitting ? "Đang đăng..." : "Đăng bài"}
                     </button>
+                    {!trimmedContent && image && <p className="mt-2 text-center text-xs text-[var(--text-muted)]">Hãy viết vài dòng mô tả cho bức ảnh của bạn.</p>}
                 </div>
             </motion.div>
         </div>

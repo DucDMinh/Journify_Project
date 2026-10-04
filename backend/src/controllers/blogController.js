@@ -7,6 +7,7 @@ import { ok, created } from '../helpers/response.js';
 
 const EDITABLE_FIELDS = ['content', 'location', 'emotion'];
 const STORAGE_FOLDER = 'blogs';
+const MAX_CONTENT_LENGTH = 5000;
 
 class BlogController extends BaseController {
     constructor() {
@@ -25,7 +26,8 @@ class BlogController extends BaseController {
 
     create = async (ctx) => {
         const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
-        ctx.assert(payload.content?.trim(), 400, 'Nội dung bài viết không được để trống');
+        ctx.assert(String(payload.content ?? '').trim(), 400, 'Nội dung bài viết không được để trống');
+        ctx.assert(String(payload.content).length <= MAX_CONTENT_LENGTH, 400, `Bài viết tối đa ${MAX_CONTENT_LENGTH} ký tự`);
         payload.user_id = ctx.state.user.id;
         if (ctx.request.file) payload.blog_image = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
         created(ctx, await blogRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
@@ -35,12 +37,12 @@ class BlogController extends BaseController {
         const { id } = ctx.params;
         const existing = await this.findOwnedOr404(ctx, id);
         const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
-        if (ctx.request.file) {
-            payload.blog_image = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
-            await deleteImageFromStorage(existing.blog_image);
-        }
-        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
-        ok(ctx, await blogRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+        if (payload.content !== undefined) ctx.assert(String(payload.content).trim(), 400, 'Nội dung bài viết không được để trống');
+        ctx.assert(Object.keys(payload).length > 0 || ctx.request.file, 400, 'Không có trường dữ liệu nào được thay đổi');
+        if (ctx.request.file) payload.blog_image = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+        const updated = await blogRepo.update(id, payload);
+        if (ctx.request.file) await deleteImageFromStorage(existing.blog_image);
+        ok(ctx, updated, `Cập nhật ${this.itemName} thành công`);
     };
 
     delete = async (ctx) => {

@@ -1,10 +1,10 @@
-/* eslint-disable @next/next/no-img-element */
 import { useEffect, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/apiClient";
 import { Blog, BlogComment, User } from "@/interface";
 import { timeAgo } from "@/utils/time";
+import UserAvatar from "@/components/common/UserAvatar";
 
 interface CommentSectionProps {
     post: Blog;
@@ -12,14 +12,7 @@ interface CommentSectionProps {
     onCountChange: (count: number) => void;
 }
 
-const Avatar = ({ src, name }: { src?: string | null; name?: string }) =>
-    src ? (
-        <img src={src} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
-    ) : (
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-primary)]/15 text-xs font-bold text-[var(--accent-primary)]">
-            {name?.charAt(0).toUpperCase() ?? "?"}
-        </span>
-    );
+const Avatar = ({ src, name }: { src?: string | null; name?: string }) => <UserAvatar src={src} name={name} className="h-8 w-8" textClassName="text-xs" />;
 
 export function CommentSection({ post, currentUser, onCountChange }: CommentSectionProps) {
     const [comments, setComments] = useState<BlogComment[] | null>(null);

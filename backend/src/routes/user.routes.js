@@ -1,10 +1,10 @@
 import Router from '@koa/router';
-import multer from '@koa/multer';
+import { createUpload } from '../helpers/uploadHelper.js';
 import * as userController from '../controllers/userController.js';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = new Router({ prefix: '/users' });
-const upload = multer();
+const upload = createUpload();
 const profileImages = upload.fields([
     { name: 'avatar', maxCount: 1 },
     { name: 'background_image', maxCount: 1 },

@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import React from "react";
+
+export const metadata: Metadata = { title: "Đăng nhập" };
 
 export default function AdminAuthLayout({
     children,

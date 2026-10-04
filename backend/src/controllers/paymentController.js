@@ -1,4 +1,4 @@
-import { createPremiumPaymentLink, handlePaymentWebhook } from '../services/paymentService.js';
+import { createPremiumPaymentLink, handlePaymentWebhook, verifyOrderPayment } from '../services/paymentService.js';
 import { ok } from '../helpers/response.js';
 
 export const createPremiumPayment = async (ctx) => {
@@ -9,6 +9,10 @@ export const createPremiumPayment = async (ctx) => {
         returnUrl,
     });
     ok(ctx, undefined, undefined, 200, result);
+};
+
+export const verifyPayment = async (ctx) => {
+    ok(ctx, await verifyOrderPayment({ orderId: ctx.params.id, user: ctx.state.user }));
 };
 
 export const receiveWebhook = async (ctx) => {

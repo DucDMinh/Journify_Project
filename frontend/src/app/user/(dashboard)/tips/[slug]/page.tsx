@@ -1,9 +1,14 @@
-/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, MapPin } from "lucide-react";
 import { TRAVEL_TIPS, getTipBySlug } from "@/data/travelTips";
 import { TipCard } from "@/components/user/TipCard";
+import SafeImage from "@/components/common/SafeImage";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+    const tip = getTipBySlug((await params).slug);
+    return { title: tip?.title ?? "Cẩm nang du lịch", description: tip?.excerpt };
+}
 
 export function generateStaticParams() {
     return TRAVEL_TIPS.map((tip) => ({ slug: tip.slug }));
@@ -20,7 +25,7 @@ export default async function TipDetailPage({ params }: { params: Promise<{ slug
     return (
         <div className="min-h-screen bg-[var(--bg-paper)] pb-20">
             <div className="relative h-[320px] overflow-hidden md:h-[420px]">
-                <img src={tip.cover} alt="" className="h-full w-full object-cover" />
+                <SafeImage src={tip.cover} alt="" className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-paper)] via-black/40 to-black/10" />
                 <div className="absolute inset-x-0 bottom-0 mx-auto max-w-3xl px-4 pb-8 sm:px-6">
                     <Link href="/tips" className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-white/90 hover:underline">

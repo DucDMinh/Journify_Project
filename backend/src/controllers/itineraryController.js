@@ -2,12 +2,41 @@ import { itineraryRepo } from '../repositories/itineraryRepository.js';
 import { BaseController } from './baseController.js';
 import { isAdmin, isOwnerOrAdmin } from '../middleware/auth.middleware.js';
 import { pick, toNumber, toBoolean, parseJsonField } from '../helpers/object.js';
+import { mergeItineraryUpdate } from '../helpers/itinerary.js';
 import { ok, created } from '../helpers/response.js';
 
 const EDITABLE_FIELDS = [
     'title', 'theme', 'summary', 'start_date', 'end_date', 'days', 'nights',
     'estimated_cost', 'image_url', 'share', 'itinerary_days', 'itinerary_provinces', 'cloned_from_id',
 ];
+
+const isValidDate = (value) => value === null || !Number.isNaN(Date.parse(value));
+
+const validatePayload = (ctx, payload) => {
+    if (payload.title !== undefined) {
+        payload.title = String(payload.title ?? '').trim();
+        ctx.assert(payload.title, 400, 'Tiêu đề lộ trình là bắt buộc');
+        ctx.assert(payload.title.length <= 200, 400, 'Tiêu đề lộ trình tối đa 200 ký tự');
+    }
+    for (const field of ['start_date', 'end_date']) {
+        if (payload[field] === '') payload[field] = null;
+        if (payload[field] !== undefined) ctx.assert(isValidDate(payload[field]), 400, 'Ngày đi/ngày về không hợp lệ');
+    }
+    if (payload.start_date && payload.end_date) {
+        ctx.assert(Date.parse(payload.end_date) >= Date.parse(payload.start_date), 400, 'Ngày về phải sau hoặc bằng ngày đi');
+    }
+    for (const field of ['estimated_cost', 'nights', 'days']) {
+        if (payload[field] !== undefined) {
+            ctx.assert(Number.isFinite(payload[field]) && payload[field] >= 0, 400, 'Số ngày, số đêm và chi phí phải là số không âm');
+        }
+    }
+    for (const field of ['itinerary_days', 'itinerary_provinces']) {
+        if (payload[field] !== undefined && payload[field] !== null) {
+            ctx.assert(Array.isArray(payload[field]), 400, 'Định dạng JSON của lộ trình không hợp lệ');
+        }
+    }
+    return payload;
+};
 
 const normalizePayload = (ctx) => {
     const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
@@ -18,10 +47,10 @@ const normalizePayload = (ctx) => {
         ctx.throw(400, 'Định dạng JSON của lộ trình không hợp lệ');
     }
     for (const field of ['estimated_cost', 'nights', 'days']) {
-        if (payload[field] !== undefined) payload[field] = toNumber(payload[field]);
+        if (payload[field] !== undefined) payload[field] = toNumber(payload[field]) ?? 0;
     }
     if (payload.share !== undefined) payload.share = toBoolean(payload.share);
-    return payload;
+    return validatePayload(ctx, payload);
 };
 
 class ItineraryController extends BaseController {
@@ -65,10 +94,11 @@ class ItineraryController extends BaseController {
 
     update = async (ctx) => {
         const { id } = ctx.params;
-        await this.assertOwner(ctx, id);
-        const payload = normalizePayload(ctx);
-        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
-        ok(ctx, await itineraryRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+        const existing = await this.findOr404(id);
+        ctx.assert(isOwnerOrAdmin(ctx.state.user, existing.user_id), 403, 'Bạn không có quyền thao tác trên lộ trình này');
+        const changes = normalizePayload(ctx);
+        ctx.assert(Object.keys(changes).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
+        ok(ctx, await itineraryRepo.update(id, mergeItineraryUpdate(existing, changes)), `Cập nhật ${this.itemName} thành công`);
     };
 
     delete = async (ctx) => {

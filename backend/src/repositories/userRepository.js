@@ -1,5 +1,7 @@
 import { BaseRepository, unwrap } from './repo.js';
 
+const ACCOUNT_FIELDS = 'id, name, email, avatar, background_image, phone_number, role, status, is_premium, created_at';
+
 const stripSecret = (user) => {
     if (!user) return user;
     const { password_hash, ...safe } = user;
@@ -21,7 +23,23 @@ class UserRepository extends BaseRepository {
     }
 
     async getById(id) {
-        return stripSecret(unwrap(await this.table().select('*, itineraries(*)').eq('id', id).maybeSingle()));
+        return stripSecret(
+            unwrap(
+                await this.table()
+                    .select('*, itineraries(*)')
+                    .eq('id', id)
+                    .order('created_at', { referencedTable: 'itineraries', ascending: false })
+                    .maybeSingle(),
+            ),
+        );
+    }
+
+    async getAccount(id) {
+        return unwrap(await this.table().select(ACCOUNT_FIELDS).eq('id', id).maybeSingle());
+    }
+
+    async getSessionInfo(id) {
+        return unwrap(await this.table().select('id, role, status, is_premium').eq('id', id).maybeSingle());
     }
 
     async getByIdWithSecret(id) {

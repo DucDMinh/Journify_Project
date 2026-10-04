@@ -1,85 +1,134 @@
 "use client";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { Bell, ShoppingBag, UserPlus, X } from "lucide-react";
 import { Dropdown } from "../../ui/dropdown/Dropdown";
+import { api } from "@/lib/apiClient";
+import { DashboardStats } from "@/interface";
+import { timeAgo } from "@/utils/time";
+import { formatVnd } from "@/lib/format";
+
+type Activity = { id: string; kind: "order" | "user"; title: string; detail: string; createdAt: string };
+
+const SEEN_KEY = "admin_activity_seen_at";
+const ORDER_LABELS: Record<string, string> = { PAID: "đã thanh toán", PENDING: "đang chờ thanh toán", CANCEL: "đã hủy" };
+
+const readSeenAt = () => {
+  try {
+    return Number(localStorage.getItem(SEEN_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+
+const toActivities = (stats: DashboardStats): Activity[] =>
+  [
+    ...stats.recentOrders.map((order) => ({
+      id: `order-${order.id}`,
+      kind: "order" as const,
+      title: `${order.user_id?.name ?? "Người dùng"} tạo đơn ${formatVnd(order.amount)}`,
+      detail: `Đơn #${order.order_code} ${ORDER_LABELS[order.status] ?? order.status}`,
+      createdAt: order.created_at,
+    })),
+    ...stats.recentUsers.map((user) => ({
+      id: `user-${user.id}`,
+      kind: "user" as const,
+      title: `${user.name} vừa đăng ký`,
+      detail: user.email,
+      createdAt: user.created_at,
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
 export default function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifying, setNotifying] = useState(true);
+  const [activities, setActivities] = useState<Activity[] | null>(null);
+  const [seenAt, setSeenAt] = useState(0);
 
-  function toggleDropdown() {
-    setIsOpen(!isOpen);
-  }
+  const load = useCallback(
+    () =>
+      api.get<DashboardStats>("/stats/overview?months=1").then(({ response, data }) => {
+        if (response.ok && data.data) setActivities(toActivities(data.data));
+        else setActivities([]);
+      }),
+    [],
+  );
 
-  function closeDropdown() {
-    setIsOpen(false);
-  }
+  useEffect(() => {
+    let ignore = false;
+    api.get<DashboardStats>("/stats/overview?months=1").then(({ response, data }) => {
+      if (ignore) return;
+      setSeenAt(readSeenAt());
+      setActivities(response.ok && data.data ? toActivities(data.data) : []);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
-  const handleClick = () => {
-    toggleDropdown();
-    setNotifying(false);
+  const hasUnread = (activities ?? []).some((activity) => new Date(activity.createdAt).getTime() > seenAt);
+
+  const toggleDropdown = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    if (next) {
+      load();
+      const now = Date.now();
+      setSeenAt(now);
+      try {
+        localStorage.setItem(SEEN_KEY, String(now));
+      } catch {
+        return;
+      }
+    }
   };
+
   return (
     <div className="relative">
       <button
-        className="relative dropdown-toggle flex items-center justify-center text-gray-500 transition-colors bg-white border border-gray-200 rounded-full hover:text-gray-700 h-11 w-11 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-        onClick={handleClick}
+        className="relative dropdown-toggle flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+        onClick={toggleDropdown}
+        aria-label="Hoạt động gần đây"
       >
-        <span
-          className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-orange-400 ${!notifying ? "hidden" : "flex"
-            }`}
-        >
-          <span className="absolute inline-flex w-full h-full bg-orange-400 rounded-full opacity-75 animate-ping"></span>
-        </span>
-        <svg
-          className="fill-current"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M10.75 2.29248C10.75 1.87827 10.4143 1.54248 10 1.54248C9.58583 1.54248 9.25004 1.87827 9.25004 2.29248V2.83613C6.08266 3.20733 3.62504 5.9004 3.62504 9.16748V14.4591H3.33337C2.91916 14.4591 2.58337 14.7949 2.58337 15.2091C2.58337 15.6234 2.91916 15.9591 3.33337 15.9591H4.37504H15.625H16.6667C17.0809 15.9591 17.4167 15.6234 17.4167 15.2091C17.4167 14.7949 17.0809 14.4591 16.6667 14.4591H16.375V9.16748C16.375 5.9004 13.9174 3.20733 10.75 2.83613V2.29248ZM14.875 14.4591V9.16748C14.875 6.47509 12.6924 4.29248 10 4.29248C7.30765 4.29248 5.12504 6.47509 5.12504 9.16748V14.4591H14.875ZM8.00004 17.7085C8.00004 18.1228 8.33583 18.4585 8.75004 18.4585H11.25C11.6643 18.4585 12 18.1228 12 17.7085C12 17.2943 11.6643 16.9585 11.25 16.9585H8.75004C8.33583 16.9585 8.00004 17.2943 8.00004 17.7085Z"
-            fill="currentColor"
-          />
-        </svg>
+        {hasUnread && (
+          <span className="absolute right-0 top-0.5 z-10 flex h-2 w-2 rounded-full bg-orange-400">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75"></span>
+          </span>
+        )}
+        <Bell className="h-5 w-5" />
       </button>
       <Dropdown
         isOpen={isOpen}
-        onClose={closeDropdown}
-        className="absolute -right-[240px] mt-[17px] flex h-[480px] w-[350px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark sm:w-[361px] lg:right-0"
+        onClose={() => setIsOpen(false)}
+        className="absolute -right-[240px] mt-[17px] flex max-h-[480px] w-[350px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark sm:w-[361px] lg:right-0"
       >
-        <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-gray-700">
-          <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Notification
-          </h5>
-          <button
-            onClick={toggleDropdown}
-            className="text-gray-500 transition dropdown-toggle dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-          >
-            <svg
-              className="fill-current"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M6.21967 7.28131C5.92678 6.98841 5.92678 6.51354 6.21967 6.22065C6.51256 5.92775 6.98744 5.92775 7.28033 6.22065L11.999 10.9393L16.7176 6.22078C17.0105 5.92789 17.4854 5.92788 17.7782 6.22078C18.0711 6.51367 18.0711 6.98855 17.7782 7.28144L13.0597 12L17.7782 16.7186C18.0711 17.0115 18.0711 17.4863 17.7782 17.7792C17.4854 18.0721 17.0105 18.0721 16.7176 17.7792L11.999 13.0607L7.28033 17.7794C6.98744 18.0722 6.51256 18.0722 6.21967 17.7794C5.92678 17.4865 5.92678 17.0116 6.21967 16.7187L10.9384 12L6.21967 7.28131Z"
-                fill="currentColor"
-              />
-            </svg>
+        <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-700">
+          <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Hoạt động gần đây</h5>
+          <button onClick={() => setIsOpen(false)} className="text-gray-500 transition hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" aria-label="Đóng">
+            <X className="h-5 w-5" />
           </button>
         </div>
+        <ul className="flex-1 space-y-1 overflow-y-auto custom-scrollbar">
+          {activities === null && <li className="px-2 py-6 text-center text-sm text-gray-500">Đang tải...</li>}
+          {activities?.length === 0 && <li className="px-2 py-6 text-center text-sm text-gray-500">Chưa có hoạt động nào.</li>}
+          {activities?.map((activity) => (
+            <li key={activity.id} className="flex gap-3 rounded-lg px-2 py-2.5 hover:bg-gray-100 dark:hover:bg-white/5">
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${activity.kind === "order" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10" : "bg-brand-50 text-brand-600 dark:bg-brand-500/10"}`}>
+                {activity.kind === "order" ? <ShoppingBag className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-theme-sm font-medium text-gray-800 dark:text-white/90">{activity.title}</span>
+                <span className="block truncate text-theme-xs text-gray-500 dark:text-gray-400">{activity.detail}</span>
+                <span className="block text-theme-xs text-gray-400">{timeAgo(activity.createdAt)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
         <Link
-          href="/"
-          className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+          href="/orders"
+          onClick={() => setIsOpen(false)}
+          className="mt-3 block rounded-lg border border-gray-300 bg-white px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
         >
-          View All Notifications
+          Xem tất cả giao dịch
         </Link>
       </Dropdown>
     </div>

@@ -58,22 +58,23 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(new URL('/', request.url));
     }
 
-    const isProtectedRoute = PROTECTED_USER_ROUTES.some((route) => url.pathname.startsWith(route));
+    const userPath = url.pathname.startsWith('/user') ? url.pathname.slice('/user'.length) || '/' : url.pathname;
+    const isProtectedRoute = PROTECTED_USER_ROUTES.some((route) => userPath === route || userPath.startsWith(`${route}/`));
 
-    if (!auth.valid && (auth.reason !== 'MISSING_TOKEN' || isProtectedRoute)) {
-        const response = isProtectedRoute
-            ? NextResponse.redirect(new URL('/auth/signin', request.url))
-            : NextResponse.next();
-        const toastError = auth.reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : isProtectedRoute ? 'unauthorized' : undefined;
-        return clearSession(response, toastError);
+    if (!auth.valid && isProtectedRoute) {
+        const signInUrl = new URL('/auth/signin', request.url);
+        signInUrl.searchParams.set('next', `${userPath}${url.search}`);
+        return clearSession(NextResponse.redirect(signInUrl), auth.reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'unauthorized');
     }
 
-    if (!url.pathname.startsWith('/user')) {
-        const targetPath = url.pathname === '/' ? '/user' : `/user${url.pathname}`;
-        return NextResponse.rewrite(new URL(targetPath, request.url));
-    }
+    const rewriteTarget = new URL(url.pathname.startsWith('/user') ? url.pathname : `/user${userPath === '/' ? '' : userPath}`, request.url);
+    rewriteTarget.search = url.search;
+    const response = url.pathname.startsWith('/user') ? NextResponse.next() : NextResponse.rewrite(rewriteTarget);
 
-    return NextResponse.next();
+    if (!auth.valid && auth.reason !== 'MISSING_TOKEN') {
+        return clearSession(response, auth.reason === 'EXPIRED' ? 'TOKEN_EXPIRED' : undefined);
+    }
+    return response;
 }
 
 export const config = {

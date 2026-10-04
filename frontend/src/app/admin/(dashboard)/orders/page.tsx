@@ -1,7 +1,6 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
     Search,
     CheckCircle2,
@@ -14,6 +13,35 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Order } from '@/interface';
 import { toast } from 'sonner';
 import { api } from '@/lib/apiClient';
+import { formatVnd } from '@/lib/format';
+import { useAutoRefresh } from '@/hooks/admin/useAutoRefresh';
+
+const STATUS_TEXT: Record<string, string> = { PAID: 'Thành công', PENDING: 'Đang chờ', CANCEL: 'Hủy' };
+
+const csvCell = (value: unknown) => {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const downloadCsv = (orders: Order[]) => {
+    const header = ['Mã đơn', 'Khách hàng', 'Mô tả', 'TK đối ứng', 'Số tiền (VNĐ)', 'Trạng thái', 'Ngày tạo'];
+    const rows = orders.map((order) => [
+        order.order_code,
+        order.user_id?.name ?? '',
+        order.description ?? '',
+        order.counterAccountNumber ?? '',
+        Math.round(Number(order.amount) || 0),
+        STATUS_TEXT[order.status] ?? order.status,
+        new Date(order.created_at).toLocaleString('vi-VN'),
+    ]);
+    const csv = '\uFEFF' + [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `giao-dich-journify-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+};
 
 const TABS = [
     { id: 'ALL', label: 'Tất cả' },
@@ -25,32 +53,41 @@ const TABS = [
 export default function AdminOrderManagement() {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState("ALL");
-    const [orders, setOrders] = useState<Order[]>([])
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const filteredOrders = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
         return orders.filter((order) => {
             const matchesSearch =
-                order.order_code.toString().includes(searchQuery) ||
-                (order.user_id?.name ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+                !query ||
+                String(order.order_code ?? '').includes(query) ||
+                (order.user_id?.name ?? "").toLowerCase().includes(query);
             const matchesStatus = activeTab === "ALL" || order.status === activeTab;
             return matchesSearch && matchesStatus;
         });
     }, [searchQuery, activeTab, orders]);
 
-    const fetchOrderData = async () => {
-        try {
-            const { data, response } = await api.get<Order[]>('/orders');
-            if (!response.ok) throw new Error(data.message || "Không tải được đơn hàng");
-            setOrders(data.data ?? []);
-        } catch (error) {
-            toast.error(`Loi: ${error}`)
-        }
-    }
+    const fetchOrderData = useCallback(async () => {
+        const { data, response } = await api.get<Order[]>('/orders');
+        if (!response.ok) toast.error(data.message || "Không tải được danh sách giao dịch");
+        else setOrders(data.data ?? []);
+        setIsLoading(false);
+    }, []);
 
     useEffect(() => {
-        fetchOrderData();
-    }, [])
+        let ignore = false;
+        api.get<Order[]>('/orders').then(({ data, response }) => {
+            if (ignore) return;
+            if (!response.ok) toast.error(data.message || "Không tải được danh sách giao dịch");
+            else setOrders(data.data ?? []);
+            setIsLoading(false);
+        });
+        return () => {
+            ignore = true;
+        };
+    }, []);
 
-    const formatCurrency = (amount: number) => amount.toLocaleString('vi-VN') + ' đ';
+    useAutoRefresh(fetchOrderData);
 
     const formatDate = (isoString: string) => {
         const date = new Date(isoString);
@@ -76,7 +113,17 @@ export default function AdminOrderManagement() {
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lịch sử Giao dịch</h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Quản lý chi tiết luồng thanh toán từ hệ thống</p>
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm shadow-indigo-500/20">
+                    <button
+                        onClick={() => {
+                            if (filteredOrders.length === 0) {
+                                toast.info("Không có giao dịch nào để xuất");
+                                return;
+                            }
+                            downloadCsv(filteredOrders);
+                            toast.success(`Đã xuất ${filteredOrders.length} giao dịch ra file CSV`);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm shadow-indigo-500/20"
+                    >
                         <ArrowDownToLine className="w-4 h-4" />
                         Xuất CSV
                     </button>
@@ -126,7 +173,11 @@ export default function AdminOrderManagement() {
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                 <AnimatePresence>
-                                    {filteredOrders.length > 0 ? (
+                                    {isLoading ? (
+                                        <tr>
+                                            <td colSpan={7} className="py-16 text-center text-sm text-slate-500">Đang tải giao dịch...</td>
+                                        </tr>
+                                    ) : filteredOrders.length > 0 ? (
                                         filteredOrders.map((order) => {
                                             const ui = getStatusUI(order.status);
                                             const StatusIcon = ui.icon;
@@ -171,7 +222,7 @@ export default function AdminOrderManagement() {
                                                     </td>
                                                     <td className="py-4 px-6 text-right">
                                                         <span className="text-sm font-bold text-slate-900 dark:text-white">
-                                                            {formatCurrency(order.amount)}
+                                                            {formatVnd(order.amount)}
                                                         </span>
                                                     </td>
                                                     <td className="py-4 px-6">

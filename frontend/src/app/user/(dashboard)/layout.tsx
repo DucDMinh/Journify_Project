@@ -1,15 +1,10 @@
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, createContext, useContext, useCallback } from "react";
 import { toast } from 'sonner';
 import { AppHeader } from "@/layout/user/AppHeader";
-import { usePathname } from "next/navigation";
 import GlobalStyles from "@/components/user/GlobalStyles";
-import { useAuth } from "@/hooks/auth/AuthContext";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { CreateTripModal } from "@/components/modals/user/CreateTripModal";
 import { AiPlannerModal } from "@/components/modals/user/AiPlannerModal";
 import { PremiumModal } from "@/components/payment/PremiumModal";
@@ -17,6 +12,9 @@ import { PremiumModal } from "@/components/payment/PremiumModal";
 type DashboardContextType = {
     notify: (msg: string, icon?: string) => void;
     setIsCreatingTrip: React.Dispatch<React.SetStateAction<boolean>>;
+    openCreateTrip: (initialProvinceId?: string) => void;
+    openAiPlanner: () => void;
+    openPremium: () => void;
 };
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -34,28 +32,12 @@ export default function UserDashboardLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const pathname = usePathname();
-    const [activeNav, setActiveNav] = useState("dashboard");
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [isCreatingTrip, setIsCreatingTrip] = useState(false);
-    const [theme, setTheme] = useState<"day" | "night">("day");
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
-    const { user: currentUser } = useAuth();
-    useEffect(() => {
-        if (pathname === "/") setActiveNav("dashboard");
-        else if (pathname.includes("/my-itinerary")) setActiveNav("trips");
-        else if (pathname.includes("/blog")) setActiveNav("wishlist");
-        else if (pathname.includes("/community")) setActiveNav("community");
-        else if (pathname.includes("/tips")) setActiveNav("tips");
-    }, [pathname]);
-    useEffect(() => {
-        if (theme === "night") {
-            document.documentElement.classList.add("theme-night");
-        } else {
-            document.documentElement.classList.remove("theme-night");
-        }
-    }, [theme]);
-    const notify = (msg: string, icon = "✨") => {
+    const [initialProvinceId, setInitialProvinceId] = useState<string | undefined>();
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+    const notify = useCallback((msg: string, icon = "✨") => {
         toast(
             <div className="flex items-center gap-2.5 font-medium text-sm">
                 <span className="text-lg">{icon}</span>
@@ -72,31 +54,28 @@ export default function UserDashboardLayout({
                 },
             }
         );
-    };
+    }, []);
+
+    const openCreateTrip = useCallback((provinceId?: string) => {
+        setInitialProvinceId(provinceId);
+        setIsCreatingTrip(true);
+    }, []);
+    const openAiPlanner = useCallback(() => setIsAiModalOpen(true), []);
+    const openPremium = useCallback(() => setIsPaymentModalOpen(true), []);
 
     return (
-        <DashboardContext.Provider value={{ notify, setIsCreatingTrip }}>
+        <DashboardContext.Provider value={{ notify, setIsCreatingTrip, openCreateTrip, openAiPlanner, openPremium }}>
             <div className="min-h-screen paper-grid selection:bg-[var(--accent-primary)] selection:text-white">
                 <GlobalStyles />
-                <AppHeader
-                    setActiveNav={setActiveNav}
-                    setIsAiModalOpen={setIsAiModalOpen}
-                    setIsCreatingTrip={setIsCreatingTrip}
-                    setTheme={setTheme}
-                    currentUser={currentUser}
-                    theme={theme}
-                    activeNav={activeNav}
-                />
-                <main className="pb-20">
+                <AppHeader onOpenAiPlanner={openAiPlanner} onCreateTrip={() => openCreateTrip()} onOpenPremium={openPremium} />
+                <main className="pb-24 md:pb-20">
                     {children}
                 </main>
                 <AnimatePresence>
                     {isAiModalOpen && (
                         <AiPlannerModal
                             onClose={() => setIsAiModalOpen(false)}
-                            onSuccess={(newTrip) => {
-                            }}
-                            onOpenPremium={() => setIsPaymentModalOpen(true)}
+                            onOpenPremium={openPremium}
                             notify={notify}
                         />
                     )}
@@ -104,6 +83,7 @@ export default function UserDashboardLayout({
                 <AnimatePresence>
                     {isCreatingTrip && (
                         <CreateTripModal
+                            initialProvinceId={initialProvinceId}
                             onClose={() => setIsCreatingTrip(false)}
                         />
                     )}

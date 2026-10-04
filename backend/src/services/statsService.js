@@ -5,18 +5,22 @@ import { ORDER_STATUS } from './paymentService.js';
 const MAX_MONTHS = 24;
 const TOP_LIMIT = 5;
 
-const monthKey = (date) => {
-    const d = new Date(date);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-};
+const VIETNAM_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+const toVietnamTime = (date) => new Date(new Date(date).getTime() + VIETNAM_OFFSET_MS);
+
+const formatMonth = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+
+const monthKey = (date) => formatMonth(toVietnamTime(date));
 
 const lastMonths = (count) => {
-    const now = new Date();
-    return Array.from({ length: count }, (_, i) => {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (count - 1 - i), 1));
-        return monthKey(d);
-    });
+    const now = toVietnamTime(Date.now());
+    return Array.from({ length: count }, (_, i) =>
+        formatMonth(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (count - 1 - i), 1))),
+    );
 };
+
+const rows = async (query) => unwrap(await query);
 
 const countRows = async (table) => {
     const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true });
@@ -41,16 +45,16 @@ export const getOverview = async ({ months = 6 } = {}) => {
 
     const [users, itineraries, itineraryProvinces, orders, locationCount, provinceCount, blogCount, topLocations, recentOrders, recentUsers] =
         await Promise.all([
-            unwrap(await supabase.from('users').select('id, created_at, is_premium, status, role')),
-            unwrap(await supabase.from('itineraries').select('id, created_at, share, theme')),
-            unwrap(await supabase.from('itinerary_provinces').select('province_id, provinces(name)')),
-            unwrap(await supabase.from('orders').select('id, created_at, status, amount')),
+            rows(supabase.from('users').select('id, created_at, is_premium, status, role')),
+            rows(supabase.from('itineraries').select('id, created_at, share, theme')),
+            rows(supabase.from('itinerary_provinces').select('province_id, provinces(name)')),
+            rows(supabase.from('orders').select('id, created_at, status, amount')),
             countRows('locations'),
             countRows('provinces'),
             countRows('blogs'),
-            unwrap(await supabase.from('locations').select('id, name, saved_count, img, provinces(name)').order('saved_count', { ascending: false }).limit(TOP_LIMIT)),
-            unwrap(await supabase.from('orders').select('id, created_at, status, amount, order_code, user_id(id, name, avatar)').order('created_at', { ascending: false }).limit(TOP_LIMIT)),
-            unwrap(await supabase.from('users').select('id, name, email, avatar, is_premium, created_at').order('created_at', { ascending: false }).limit(TOP_LIMIT)),
+            rows(supabase.from('locations').select('id, name, saved_count, img, provinces(name)').order('saved_count', { ascending: false }).limit(TOP_LIMIT)),
+            rows(supabase.from('orders').select('id, created_at, status, amount, order_code, user_id(id, name, avatar)').order('created_at', { ascending: false }).limit(TOP_LIMIT)),
+            rows(supabase.from('users').select('id, name, email, avatar, is_premium, created_at').order('created_at', { ascending: false }).limit(TOP_LIMIT)),
         ]);
 
     const paidOrders = orders.filter((o) => o.status === ORDER_STATUS.PAID);
@@ -81,7 +85,7 @@ export const getOverview = async ({ months = 6 } = {}) => {
     }));
 
     return {
-        range: { months: range, from: sinceIso.slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+        range: { months: range, from: sinceIso.slice(0, 10), to: toVietnamTime(Date.now()).toISOString().slice(0, 10) },
         totals: {
             users: users.length,
             activeUsers: users.filter((u) => u.status !== 'inactive').length,
@@ -113,12 +117,12 @@ const POINTS = { blog: 10, publicItinerary: 20, like: 2 };
 
 export const getCommunityOverview = async () => {
     const [blogs, publicItineraries, users, hotLocations, latestItineraries] = await Promise.all([
-        unwrap(await supabase.from('blogs').select('id, user_id, likes')),
-        unwrap(await supabase.from('itineraries').select('id, user_id').eq('share', true)),
-        unwrap(await supabase.from('users').select('id, name, avatar, is_premium')),
-        unwrap(await supabase.from('locations').select('id, name, img, saved_count, provinces(name)').order('saved_count', { ascending: false }).limit(TOP_LIMIT)),
-        unwrap(
-            await supabase
+        rows(supabase.from('blogs').select('id, user_id, likes')),
+        rows(supabase.from('itineraries').select('id, user_id').eq('share', true)),
+        rows(supabase.from('users').select('id, name, avatar, is_premium')),
+        rows(supabase.from('locations').select('id, name, img, saved_count, provinces(name)').order('saved_count', { ascending: false }).limit(TOP_LIMIT)),
+        rows(
+            supabase
                 .from('itineraries')
                 .select('id, title, image_url, days, nights, estimated_cost, theme, created_at, user_id(id, name, avatar), itinerary_provinces(provinces(name))')
                 .eq('share', true)

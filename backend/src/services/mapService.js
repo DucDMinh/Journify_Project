@@ -11,9 +11,11 @@ const GOOGLE_MAPS_HOSTS = new Set([
     'google.com',
     'www.google.com.vn',
     'google.com.vn',
+    'maps.google.com.vn',
 ]);
 
 const MAX_PREVIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PREVIEW_PAGE_BYTES = 3 * 1024 * 1024;
 const GEOCODE_TIMEOUT_MS = 8000;
 // Khung tọa độ Việt Nam để ưu tiên kết quả trong nước
 const VIETNAM_BBOX = '102.1,8.2,109.6,23.5';
@@ -122,14 +124,40 @@ const assertGoogleMapsUrl = (rawUrl) => {
     return parsed;
 };
 
+const GOOGLE_IMAGE_HOST_SUFFIXES = ['.googleusercontent.com', '.googleapis.com', '.gstatic.com', '.ggpht.com', '.google.com'];
+
+const isGoogleImageUrl = (rawUrl) => {
+    try {
+        const { protocol, hostname } = new URL(rawUrl);
+        return protocol === 'https:' && GOOGLE_IMAGE_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
+    } catch {
+        return false;
+    }
+};
+
+const rejectForeignRedirect = (options) => {
+    if (options.protocol !== 'https:' || !GOOGLE_MAPS_HOSTS.has(options.hostname)) {
+        throw new HttpError(400, 'Link chuyển hướng ra ngoài Google Maps');
+    }
+};
+
 export const extractGoogleMapsPreview = async (rawUrl) => {
     assertGoogleMapsUrl(rawUrl);
 
-    const response = await axios.get(rawUrl, {
-        headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' },
-        timeout: 10000,
-        maxRedirects: 5,
-    });
+    let response;
+    try {
+        response = await axios.get(rawUrl, {
+            headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' },
+            timeout: 10000,
+            maxRedirects: 5,
+            maxContentLength: MAX_PREVIEW_PAGE_BYTES,
+            beforeRedirect: rejectForeignRedirect,
+        });
+    } catch (error) {
+        const reason = [error, error?.cause].find((candidate) => candidate instanceof HttpError);
+        if (reason) throw reason;
+        throw new HttpError(502, 'Không truy cập được link Google Maps, vui lòng thử lại');
+    }
     const expandedUrl = response.request?.res?.responseUrl || rawUrl;
     assertGoogleMapsUrl(expandedUrl);
 
@@ -140,14 +168,14 @@ export const extractGoogleMapsPreview = async (rawUrl) => {
         .replace('Google Maps', '')
         .trim();
 
-    if (!imageUrl) return { expandedUrl, name, base64: null };
+    if (!imageUrl || !isGoogleImageUrl(imageUrl)) return { expandedUrl, name, base64: null };
 
-    const image = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        timeout: 10000,
-        maxContentLength: MAX_PREVIEW_IMAGE_BYTES,
-    });
+    const image = await axios
+        .get(imageUrl, { responseType: 'arraybuffer', timeout: 10000, maxRedirects: 0, maxContentLength: MAX_PREVIEW_IMAGE_BYTES })
+        .catch(() => null);
+    if (!image) return { expandedUrl, name, base64: null };
     const mimeType = image.headers['content-type'] || 'image/jpeg';
+    if (!mimeType.startsWith('image/')) return { expandedUrl, name, base64: null };
     return {
         expandedUrl,
         name,

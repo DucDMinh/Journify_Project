@@ -8,6 +8,18 @@ import { REGIONS, regionKeyOf } from '../config/regions.js';
 const EDITABLE_FIELDS = ['name', 'description', 'best_time_to_visit', 'height', 'image_url'];
 const STORAGE_FOLDER = 'provinces';
 
+const normalizeProvince = (ctx, payload) => {
+    if (payload.name !== undefined) {
+        payload.name = String(payload.name ?? '').trim();
+        ctx.assert(payload.name, 400, 'Tên tỉnh thành là bắt buộc');
+    }
+    if (payload.height !== undefined) {
+        payload.height = payload.height === '' || payload.height === null ? null : Number(payload.height);
+        ctx.assert(payload.height === null || Number.isInteger(payload.height), 400, 'Độ cao phải là số nguyên (mét)');
+    }
+    return payload;
+};
+
 class ProvinceController extends BaseController {
     constructor() {
         super(provinceRepo, 'Tỉnh thành');
@@ -44,7 +56,7 @@ class ProvinceController extends BaseController {
     };
 
     create = async (ctx) => {
-        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
+        const payload = normalizeProvince(ctx, pick(ctx.request.body ?? {}, EDITABLE_FIELDS));
         ctx.assert(payload.name, 400, 'Tên tỉnh thành là bắt buộc');
         if (ctx.request.file) payload.image_url = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
         created(ctx, await provinceRepo.create(payload), `Tạo mới ${this.itemName} thành công`);
@@ -53,18 +65,23 @@ class ProvinceController extends BaseController {
     update = async (ctx) => {
         const { id } = ctx.params;
         const existing = await this.findOr404(id);
-        const payload = pick(ctx.request.body ?? {}, EDITABLE_FIELDS);
-        if (ctx.request.file) {
-            payload.image_url = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
-            await deleteImageFromStorage(existing.image_url);
-        }
-        ctx.assert(Object.keys(payload).length > 0, 400, 'Không có trường dữ liệu nào được thay đổi');
-        ok(ctx, await provinceRepo.update(id, payload), `Cập nhật ${this.itemName} thành công`);
+        const payload = normalizeProvince(ctx, pick(ctx.request.body ?? {}, EDITABLE_FIELDS));
+        ctx.assert(Object.keys(payload).length > 0 || ctx.request.file, 400, 'Không có trường dữ liệu nào được thay đổi');
+        if (ctx.request.file) payload.image_url = await uploadImageToStorage(ctx.request.file, STORAGE_FOLDER);
+        const updated = await provinceRepo.update(id, payload);
+        if (ctx.request.file) await deleteImageFromStorage(existing.image_url);
+        ok(ctx, updated, `Cập nhật ${this.itemName} thành công`);
     };
 
     delete = async (ctx) => {
         const { id } = ctx.params;
         const existing = await this.findOr404(id);
+        const locationCount = existing.locations?.length ?? 0;
+        ctx.assert(
+            locationCount === 0,
+            409,
+            `Tỉnh "${existing.name}" còn ${locationCount} địa điểm. Hãy xóa hoặc chuyển các địa điểm sang tỉnh khác trước khi xóa tỉnh.`,
+        );
         const deleted = await provinceRepo.delete(id);
         await deleteImageFromStorage(existing.image_url);
         ok(ctx, deleted, `Xóa ${this.itemName} thành công`);

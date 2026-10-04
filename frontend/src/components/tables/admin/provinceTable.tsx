@@ -4,6 +4,7 @@ import { Province } from "@/interface";
 import { Popconfirm } from "antd";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import SafeImage from "@/components/common/SafeImage";
 
 interface ProvinceTableProps {
     setIsListModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -42,8 +43,7 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
                         <td className="px-6 py-4">
                             <div className="relative h-14 w-24 overflow-hidden rounded-xl border border-gray-200/60 shadow-sm dark:border-gray-700">
                                 {loc.image_url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
+                                    <SafeImage
                                         src={loc.image_url}
                                         alt={loc.name}
                                         className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"

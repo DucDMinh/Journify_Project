@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveProvinces } from './provinceMerger.js';
+import { resolveProvinces, destinationsIn, destinationsMentioned, destinationProvinceName } from './provinceMerger.js';
 
 // Tên giống hệt bảng provinces trong DB (có "Thành phố", "Hoà" kiểu cũ)
-const provinces = ['Tuyên Quang', 'Lào Cai', 'Lai Châu', 'Thành phố Hải Phòng', 'Thành phố Hồ Chí Minh', 'Thành phố Huế', 'Khánh Hoà', 'An Giang', 'Thành phố Đà Nẵng']
+const provinces = ['Tuyên Quang', 'Lào Cai', 'Lai Châu', 'Thành phố Hải Phòng', 'Thành phố Hồ Chí Minh', 'Thành phố Huế', 'Khánh Hoà', 'An Giang', 'Thành phố Đà Nẵng', 'Lâm Đồng']
     .map((name, i) => ({ id: `p${i}`, name }));
 const names = (raw) => resolveProvinces(raw, provinces).map((p) => p.name);
 
@@ -32,4 +32,31 @@ test('không so khớp một phần tên (tránh "Hà" ra Hải Phòng)', () => 
     assert.deepEqual(names('Hà'), []);
     assert.deepEqual(names(''), []);
     assert.deepEqual(names(undefined), []);
+});
+
+test('điểm du lịch nổi tiếng được quy về tỉnh chứa nó', () => {
+    assert.deepEqual(names('Đà Lạt'), ['Lâm Đồng']);
+    assert.deepEqual(names('Sapa'), ['Lào Cai']);
+    assert.deepEqual(names('Hội An'), ['Thành phố Đà Nẵng']);
+    assert.deepEqual(names('Phú Quốc'), ['An Giang']);
+    assert.deepEqual(names('Nha Trang / Đà Lạt'), ['Khánh Hoà', 'Lâm Đồng']);
+});
+
+test('nhận ra tên điểm du lịch để khoanh vùng địa lý', () => {
+    assert.deepEqual(destinationsIn('Đà Lạt'), ['Đà Lạt']);
+    assert.deepEqual(destinationsIn('Lâm Đồng'), []);
+    assert.deepEqual(destinationsIn('Sa Pa, Lào Cai'), ['Sa Pa']);
+});
+
+test('tìm tên điểm du lịch được nhắc trong câu yêu cầu (nguyên từ, không dấu)', () => {
+    assert.deepEqual(destinationsMentioned('Đi Đà Lạt 2 ngày, thích cà phê').map((d) => d.name), ['Đà Lạt']);
+    assert.deepEqual(destinationsMentioned('di da lat roi xuong mui ne').map((d) => d.name), ['Đà Lạt', 'Mũi Né']);
+    assert.deepEqual(destinationsMentioned('Sapa mùa lúa chín').map((d) => d.province), ['lao cai']);
+    assert.deepEqual(destinationsMentioned('Đi biển cuối tuần'), []);
+});
+
+test('tỉnh của điểm du lịch lấy từ bảng tra, không phụ thuộc AI', () => {
+    assert.equal(destinationProvinceName('Đà Lạt'), 'Lâm Đồng');
+    assert.equal(destinationProvinceName('phu quoc'), 'An Giang');
+    assert.equal(destinationProvinceName('Lâm Đồng'), null);
 });

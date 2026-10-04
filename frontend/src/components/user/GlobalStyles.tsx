@@ -3,8 +3,6 @@
 export default function GlobalStyles() {
     return (
         <style jsx global>{`
-      @import url("https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Grotesk:wght@500;700&display=swap");
-
       :root {
         --bg-paper: #fcfaf6;
         --bg-card: #ffffff;
@@ -42,7 +40,6 @@ export default function GlobalStyles() {
       body {
         background-color: var(--bg-paper);
         color: var(--text-main);
-        font-family: "Plus Jakarta Sans", sans-serif;
         transition: background-color 0.3s ease, color 0.3s ease;
       }
 
@@ -53,13 +50,6 @@ export default function GlobalStyles() {
           transparent 1px
         );
         background-size: 24px 24px;
-      }
-
-      .font-hand {
-        font-family: "Caveat", cursive;
-      }
-      .font-display {
-        font-family: "Space Grotesk", sans-serif;
       }
 
       /* Custom Scrollbar */

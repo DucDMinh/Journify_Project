@@ -77,18 +77,22 @@ export interface Province {
 export interface Itinerary {
     id: string;
     title: string;
-    summary: string;
-    start_date: string;
-    end_date: string;
-    theme: string;
+    summary: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    theme: string | null;
     days?: number;
     nights?: number;
-    estimated_cost: number;
+    estimated_cost: number | null;
     image_url?: string | null;
     itinerary_days: Itinerary_days[] | null;
     share?: boolean;
     itinerary_provinces: Itinerary_provinces[] | null;
     user_id: UserRef | string | null;
+    author?: UserRef | null;
+    author_name?: string;
+    author_avatar?: string | null;
+    cloned_from_id?: string | null;
     created_at?: string;
 }
 
@@ -112,10 +116,10 @@ export interface Itinerary_locations {
     day_id: string;
     location_id: string | null;
     sequence_order: number;
-    activity_note: string;
-    cost: number;
-    start_time: string;
-    end_time: string;
+    activity_note: string | null;
+    cost: number | null;
+    start_time: string | null;
+    end_time: string | null;
     location_name: string;
     lat: number;
     lng: number;
@@ -141,7 +145,7 @@ export interface BuilderScreenProp {
     setLocations: Dispatch<SetStateAction<Location[]>>;
 }
 
-export type UserRef = Pick<User, "id" | "name" | "avatar">;
+export type UserRef = Pick<User, "id" | "name"> & { avatar?: string | null };
 
 export const asUserRef = (value: UserRef | string | null | undefined): UserRef | null =>
     value && typeof value === "object" ? value : null;
@@ -166,10 +170,10 @@ export interface User {
     role: UserRole;
     status: UserStatus;
     created_at: string;
-    avatar?: string;
+    avatar?: string | null;
     itineraries: Itinerary[];
-    phone_number: number;
-    background_image: string;
+    phone_number: number | string | null;
+    background_image: string | null;
     is_premium: boolean;
 }
 

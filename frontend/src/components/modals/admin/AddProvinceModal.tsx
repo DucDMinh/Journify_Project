@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Upload } from "lucide-react";
+import SafeImage from "@/components/common/SafeImage";
 
 interface AddProvinceModalProps {
     isOpen: boolean;
@@ -130,7 +131,7 @@ export const AddProvinceModal: React.FC<AddProvinceModalProps> = ({
                                 <div className="flex w-full items-center justify-center">
                                     <label className="dark:hover:bg-bray-800 flex h-48 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-gray-500 dark:hover:bg-gray-600 overflow-hidden relative">
                                         {previewUrl ? (
-                                            <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+                                            <SafeImage src={previewUrl} alt="Ảnh xem trước" className="h-full w-full object-cover" />
                                         ) : (
                                             <div className="flex flex-col items-center justify-center pb-6 pt-5 text-gray-500 dark:text-gray-400">
                                                 <Upload className="mb-3 h-8 w-8" />

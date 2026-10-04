@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { BookOpen, Search } from "lucide-react";
 import { TRAVEL_TIPS } from "@/data/travelTips";
 import { TipCard } from "@/components/user/TipCard";
+import { matchesSearch } from "@/lib/format";
 
 export default function TipsPage() {
     const [query, setQuery] = useState("");
@@ -10,9 +11,7 @@ export default function TipsPage() {
     const tags = useMemo(() => ["Tất cả", ...new Set(TRAVEL_TIPS.map((t) => t.tag))], []);
 
     const visible = TRAVEL_TIPS.filter((tip) => {
-        const q = query.trim().toLowerCase();
-        const matchQuery = !q || tip.title.toLowerCase().includes(q) || tip.excerpt.toLowerCase().includes(q);
-        return matchQuery && (tag === "Tất cả" || tip.tag === tag);
+        return matchesSearch(query, tip.title, tip.excerpt, tip.tag) && (tag === "Tất cả" || tip.tag === tag);
     });
 
     return (

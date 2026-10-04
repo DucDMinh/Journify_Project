@@ -3,6 +3,7 @@ import { Province, Location, Itinerary_days } from "@/interface";
 import { CheckCircle2, Search } from "lucide-react";
 import { DraggableLocationCard } from "./DraggableLocationCard";
 import { useState, useMemo } from "react";
+import { matchesSearch } from "@/lib/format";
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
     const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -48,7 +49,7 @@ export const LocationSidebar = ({ selectedProvinces, locations, onAddLocation, d
         let result = locations || [];
 
         if (searchTerm.trim()) {
-            result = result.filter((loc: any) => loc.name?.toLowerCase().includes(searchTerm.toLowerCase()));
+            result = result.filter((loc: any) => matchesSearch(searchTerm, loc.name, loc.description));
         }
 
         let mappedResult = result.map((loc: any) => {

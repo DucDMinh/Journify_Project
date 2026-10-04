@@ -1,6 +1,5 @@
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { api } from "@/lib/apiClient";
-import { User } from "@/interface";
 import { usePayOS } from "@payos/payos-checkout";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Crown, X } from "lucide-react";
@@ -12,10 +11,10 @@ interface PremiumModalProps {
 }
 
 const features = [
-    "Tạo lộ trình AI vô hạn số lần",
-    "Clone và lưu trữ lộ trình không giới hạn",
-    "Trải nghiệm mượt mà không quảng cáo",
-    "Hỗ trợ ưu tiên 24/7 từ đội ngũ"
+    "Mở khóa AI Travel Designer: tạo lộ trình từ một câu mô tả",
+    "AI tự chọn địa điểm thật trong hệ thống và xếp giờ theo ngày",
+    "Tự động tối ưu thứ tự di chuyển để quãng đường ngắn nhất",
+    "Huy hiệu Premium trên hồ sơ và bảng vinh danh cộng đồng"
 ];
 
 // Giá hiển thị (nghìn VNĐ) phải khớp PREMIUM_PLANS ở backend; số tiền thực tế do backend quyết định.
@@ -26,7 +25,15 @@ const plans = [
     { id: 12, months: 12, price: 60, title: "1 Năm" },
 ];
 const DEFAULT_PLAN_ID = 6;
-const REFRESH_DELAY_MS = 2000;
+const VERIFY_ATTEMPTS = 8;
+const VERIFY_INTERVAL_MS = 2500;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface VerifyResult {
+    status: string;
+    is_premium: boolean;
+}
 
 const Message = ({ message }: { message: string }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
@@ -51,21 +58,27 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [isCreatingLink, setIsCreatingLink] = useState(false);
-    const { login } = useAuth();
+    const { refreshSession } = useAuth();
     const [orderId, setOrderId] = useState("");
     const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? plans[0];
 
-    const refreshSessionAfterPayment = async () => {
-        const toastId = toast.loading("Thanh toán thành công! Đang cập nhật hệ thống...");
-        try {
-            const { data, response } = await api.get<undefined>("/auth/refresh-token");
-            if (!response.ok) throw new Error(data.message);
-            login(data.token as string, data.user as User);
-            toast.success("Tài khoản đã được nâng cấp Premium 👑", { id: toastId });
-            setMessage("Cảm ơn bạn! Tài khoản của bạn đã là Premium.");
-        } catch {
-            toast.error("Có lỗi khi làm mới dữ liệu, vui lòng F5 trang.", { id: toastId });
+    const confirmPayment = async (currentOrderId: string) => {
+        const toastId = toast.loading("Đang xác nhận thanh toán với PayOS...");
+        for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
+            const { data, response } = await api.post<VerifyResult>(`/payments/orders/${currentOrderId}/verify`);
+            if (response.ok && data.data?.status === "PAID" && data.data.is_premium) {
+                await refreshSession();
+                toast.success("Tài khoản đã được nâng cấp Premium 👑", { id: toastId });
+                setMessage("Cảm ơn bạn! Tài khoản của bạn đã là Premium.");
+                return;
+            }
+            if (!response.ok && response.status !== 502 && response.status !== 503) {
+                toast.error(data.message || "Không xác nhận được thanh toán", { id: toastId });
+                return;
+            }
+            await wait(VERIFY_INTERVAL_MS);
         }
+        toast.error("Chưa nhận được xác nhận thanh toán. Nếu đã chuyển khoản, vui lòng tải lại trang sau ít phút.", { id: toastId, duration: 8000 });
     };
 
     const [payOSConfig, setPayOSConfig] = useState({
@@ -75,7 +88,6 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
         embedded: true,
         onSuccess: () => {
             setIsOpen(false);
-            setTimeout(refreshSessionAfterPayment, REFRESH_DELAY_MS);
         },
         onCancel: () => {
             setIsOpen(false);
@@ -92,8 +104,16 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                 returnUrl: window.location.href,
             });
             if (!response.ok) throw new Error(data.message || "Có lỗi xảy ra khi tạo giao dịch");
-            setOrderId(String(data.orderId));
-            setPayOSConfig((oldConfig) => ({ ...oldConfig, CHECKOUT_URL: String(data.checkoutUrl) }));
+            const newOrderId = String(data.orderId);
+            setOrderId(newOrderId);
+            setPayOSConfig((oldConfig) => ({
+                ...oldConfig,
+                CHECKOUT_URL: String(data.checkoutUrl),
+                onSuccess: () => {
+                    setIsOpen(false);
+                    confirmPayment(newOrderId);
+                },
+            }));
             toast.success("Khởi tạo thành công!", { id: toastId });
             setIsOpen(true);
         } catch (error) {
@@ -162,7 +182,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
                             </div>
 
                             <p className="text-center text-[11px] font-medium text-orange-500 mt-4 bg-orange-500/10 py-2 rounded-lg">
-                                ⏳ Vui lòng đợi 5-10s sau khi thanh toán thành công để hệ thống cập nhật.
+                                ⏳ Sau khi chuyển khoản, hệ thống sẽ tự xác nhận trong vài giây.
                             </p>
                         </div>
                     )}
@@ -273,7 +293,7 @@ export function PremiumModal({ onClose }: PremiumModalProps) {
 
                         {!isOpen && (
                             <p className="text-center text-[10px] font-medium text-[var(--text-muted)] mt-3 relative z-10">
-                                Gia hạn tự động. Hủy bất cứ lúc nào.
+                                Thanh toán một lần qua PayOS (VietQR), không tự động gia hạn.
                             </p>
                         )}
                     </div>

@@ -1,15 +1,27 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, User, ArrowRight, Compass } from "lucide-react";
+import { Mail, Lock, User, ArrowRight, ArrowLeft, Compass } from "lucide-react";
 import { toast } from 'sonner';
 import { useAuth } from "@/hooks/auth/AuthContext";
 import { api } from "@/lib/apiClient";
 import type { User as AppUser } from "@/interface";
 
-export default function AuthScreen() {
+const safeNextPath = (value: string | null) => (value && value.startsWith("/") && !value.startsWith("//") ? value : "/");
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 dark:bg-gray-950" />}>
+      <AuthScreen />
+    </Suspense>
+  );
+}
+
+function AuthScreen() {
   const router = useRouter();
+  const nextPath = safeNextPath(useSearchParams().get("next"));
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState("");
@@ -49,9 +61,7 @@ export default function AuthScreen() {
       if (response.ok && result.success) {
         login(result.token as string, result.user as AppUser);
         toast.success(isLogin ? "Đăng nhập thành công!" : "Đăng ký thành công!", { id: toastId });
-        setTimeout(() => {
-          router.push('/');
-        }, 500);
+        router.replace(nextPath);
       } else {
         toast.error(result.message || "Có lỗi xảy ra, vui lòng thử lại.", { id: toastId });
       }
@@ -63,7 +73,10 @@ export default function AuthScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 sm:p-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center gap-4 p-4 sm:p-8">
+      <Link href="/" className="flex w-full max-w-5xl items-center gap-2 text-sm font-semibold text-gray-500 transition-colors hover:text-brand-600 dark:text-gray-400">
+        <ArrowLeft className="h-4 w-4" /> Về trang chủ
+      </Link>
       <div className="w-full max-w-5xl bg-white dark:bg-gray-900 rounded-3xl shadow-2xl dark:shadow-none border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
         <div className="hidden md:flex md:w-1/2 bg-brand-600 relative flex-col justify-between p-12 text-white overflow-hidden">
           <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1488085061387-422e29b40080?q=80&w=1000&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay"></div>
@@ -143,15 +156,25 @@ export default function AuthScreen() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Mật khẩu</label>
-                    {isLogin && <a href="#" className="text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">Quên mật khẩu?</a>}
+                    {isLogin && (
+                      <button
+                        type="button"
+                        onClick={() => toast.info("Vui lòng liên hệ quản trị viên Journify để được cấp lại mật khẩu.", { duration: 5000 })}
+                        className="text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                      >
+                        Quên mật khẩu?
+                      </button>
+                    )}
                   </div>
                   <div className="relative flex items-center">
                     <Lock className="absolute left-3 h-5 w-5 text-gray-400" />
                     <input
                       required
+                      minLength={isLogin ? undefined : 6}
                       type="password"
                       value={password}
                       name="password"
+                      autoComplete={isLogin ? "current-password" : "new-password"}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
                       className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all dark:text-white"

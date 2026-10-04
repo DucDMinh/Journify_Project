@@ -5,6 +5,7 @@ import { verifyToken } from '../middleware/auth.middleware.js';
 const router = new Router({ prefix: '/payments' });
 
 router.post('/premium', verifyToken, paymentController.createPremiumPayment);
+router.post('/orders/:id/verify', verifyToken, paymentController.verifyPayment);
 router.post('/webhook', paymentController.receiveWebhook);
 
 export default router;

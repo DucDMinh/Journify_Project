@@ -47,6 +47,8 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
         setIsMapModalOpen,
         handleUpdateActivity,
         handleAddItinerary,
+        isSaving,
+        handleUpdateDayTitle,
         handleAddActivity,
         handleRemoveActivity,
         handleAddLocationToItinerary,
@@ -111,10 +113,12 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
                         setCurrentItinerary(undefined);
                         setSelectedProvinces([]);
                     }}
-                    onSave={() => {
-                        handleAddItinerary();
-                        setCurrentItinerary(undefined);
-                        setSelectedProvinces([]);
+                    isSaving={isSaving}
+                    onSave={async () => {
+                        if (await handleAddItinerary()) {
+                            setCurrentItinerary(undefined);
+                            setSelectedProvinces([]);
+                        }
                     }}
                     isDropdownOpen={isDropdownOpen}
                     setIsDropdownOpen={setIsDropdownOpen}
@@ -162,6 +166,7 @@ export const BuilderScreen: React.FC<BuilderScreenProp> = (props) => {
                                 handleAddActivity={handleAddActivity}
                                 handleRemoveActivity={handleRemoveActivity}
                                 handleUpdateActivity={handleUpdateActivity}
+                                handleUpdateDayTitle={handleUpdateDayTitle}
                                 setIsMapModalOpen={setIsMapModalOpen}
                                 setCurrentActiveDayId={setCurrentActiveDayId}
                                 setCurrentActiveLocId={setCurrentActiveLocId}

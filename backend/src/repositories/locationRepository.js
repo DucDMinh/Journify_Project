@@ -8,17 +8,25 @@ class LocationRepository extends BaseRepository {
         super('locations');
     }
 
+    filtered(columns, options, { search = '', provinceId = '' }) {
+        let query = this.table().select(columns, options);
+        if (provinceId) query = query.eq('province_id', provinceId);
+        if (search) query = query.ilike('name', `%${search.replace(/[\\%_*]/g, (char) => `\\${char}`)}%`);
+        return query;
+    }
+
     async getPaginated({ page = 1, limit = 10, search = '', provinceId = '' }) {
         const offset = (page - 1) * limit;
-        let query = this.table().select('*, provinces(name)', { count: 'exact' });
-        if (provinceId) query = query.eq('province_id', provinceId);
-        if (search) query = query.ilike('name', `%${search}%`);
-
-        const { data, count, error } = await query
+        const { data, count, error } = await this.filtered('*, provinces(name)', { count: 'exact' }, { search, provinceId })
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
+        if (error?.code === 'PGRST103') {
+            const total = await this.filtered('id', { count: 'exact', head: true }, { search, provinceId });
+            if (total.error) throw total.error;
+            return { data: [], count: total.count ?? 0 };
+        }
         if (error) throw error;
-        return { data, count };
+        return { data, count: count ?? 0 };
     }
 
     async getMostSaved(limit = 5) {

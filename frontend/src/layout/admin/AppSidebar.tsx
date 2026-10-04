@@ -248,24 +248,25 @@ const AppSidebar: React.FC = () => {
           {isExpanded || isHovered || isMobileOpen ? (
             <>
               <Image
-                className="dark:hidden"
+                className="h-10 w-auto dark:hidden"
                 src="/images/logo/logo.svg"
-                alt="Logo"
+                alt="Journify Admin"
                 width={150}
                 height={40}
               />
               <Image
-                className="hidden dark:block"
+                className="hidden h-10 w-auto dark:block"
                 src="/images/logo/logo-dark - Copy.svg"
-                alt="Logo"
+                alt="Journify Admin"
                 width={150}
                 height={40}
               />
             </>
           ) : (
             <Image
+              className="h-8 w-8"
               src="/images/logo/logo-icon.svg"
-              alt="Logo"
+              alt="Journify Admin"
               width={32}
               height={32}
             />
