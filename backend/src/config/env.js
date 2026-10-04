@@ -20,6 +20,8 @@ export const env = {
         baseUrl: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
         apiKey: process.env.AI_API_KEY || process.env.GROQ_API_KEY || '',
         model: process.env.AI_MODEL || process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+        // Mức "suy nghĩ" của model có suy luận (low/medium/high); để trống nếu nhà cung cấp/model không hỗ trợ tham số này
+        reasoningEffort: process.env.AI_REASONING_EFFORT ?? 'low',
     },
     payos: {
         clientId: process.env.PAYOS_CLIENT_ID || '',

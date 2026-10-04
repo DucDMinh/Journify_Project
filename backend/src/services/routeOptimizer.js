@@ -8,9 +8,12 @@ import { distanceMeters } from '../helpers/geo.js';
 
 const EPSILON = 1e-6;
 
-// Quy đổi đường chim bay sang đường bộ và tốc độ trung bình, chỉ dùng để ước lượng thời gian di chuyển
+// Quy đổi đường chim bay sang đường bộ và tốc độ trung bình, chỉ dùng để ước lượng thời gian di chuyển:
+// LOCAL_ROAD_KM đầu tiên đi đường tỉnh/đèo núi, phần còn lại của quãng dài coi như đi quốc lộ/cao tốc
 const ROAD_DETOUR_FACTOR = 1.3;
-const AVG_SPEED_KMH = 35;
+const LOCAL_ROAD_KM = 50;
+const LOCAL_SPEED_KMH = 35;
+const HIGHWAY_SPEED_KMH = 60;
 const TRAVEL_ROUND_MINUTES = 5;
 const LAST_MINUTE_OF_DAY = 23 * 60 + 59;
 
@@ -125,8 +128,9 @@ const durationOf = (activity) => {
 
 export const estimateTravelMinutes = (meters) => {
     if (meters <= 0) return 0;
-    const minutes = (((meters / 1000) * ROAD_DETOUR_FACTOR) / AVG_SPEED_KMH) * 60;
-    return Math.ceil(minutes / TRAVEL_ROUND_MINUTES) * TRAVEL_ROUND_MINUTES;
+    const roadKm = (meters / 1000) * ROAD_DETOUR_FACTOR;
+    const hours = Math.min(roadKm, LOCAL_ROAD_KM) / LOCAL_SPEED_KMH + Math.max(0, roadKm - LOCAL_ROAD_KM) / HIGHWAY_SPEED_KMH;
+    return Math.ceil((hours * 60) / TRAVEL_ROUND_MINUTES) * TRAVEL_ROUND_MINUTES;
 };
 
 // Xếp lại giờ theo thứ tự mới: giữ giờ bắt đầu ngày, thời lượng của từng hoạt động và khoảng nghỉ gốc theo vị trí
